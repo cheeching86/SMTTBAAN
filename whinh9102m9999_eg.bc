@@ -1,0 +1,124 @@
+|******************************************************************************
+|* whinh9102m9999  0  VRC B61C a  cus 
+|* Test 2
+|* baan
+|* 23-05-24 
+|******************************************************************************
+|* Script Type: DAL
+|******************************************************************************
+declaration:
+
+#include <bic_dam>
+#include <bic_cmf>                                                              
+#include <bic_dal2>
+
+
+function extern long before.open.object.set()
+{
+	return(0)
+}
+
+function extern long before.save.object(long type)
+{
+	return(typeq)
+}
+
+|****************************** function **********************************
+
+Functions:	
+function extern gen.wh.order.trans()
+{
+
+	string 	form2.msg(100), pr.device(8), error.msg(100), refer(22),msg1(100),error(100)
+	domain	tcorno		orno
+	domain	tcclot		lot.num
+	domain	tclsel		lot.code
+
+    | ******* Check Warehousing Order Transfer Exist******* |
+	select whinh200.orno, whinh200.refe
+	from whinh200
+	where whinh200.refe = :whinh200.refe and whinh200.sfco = "WCG9" and whinh200.stco = "Q11"
+	group by whinh200.orno, whinh200.refe
+	selectdo
+		message("Warehousing Order already exist! %s", whinh200.refe)			
+	selectempty
+
+        select tisfc001.pdno, tisfc001.cwar, tisfc001.qrdr, tisfc001.mitm,tttxt010.text
+        from tisfc001,tttxt010
+        where tisfc001.pdno = :prod.ord and tisfc001.line.no = "WCG9" 
+        and tttxt010.ctxt refers to tisfc001.txta
+        selectdo
+            
+            if  double.cmp(whinh210.qoro,tisfc001.qrdr , 0.0001) = 1  then
+                message("Transfer Quantity over the production quantity is not allowed")		
+            else
+                select timfc001.clot
+                from timfc001
+                where timfc001.pdno = :prod.ord and timfc001.cwar = "WCG9" and timfc001.clot <> ""
+                selectdo
+                    lot.num = timfc001.clot
+                    lot.code = tclsel.specific
+
+                    pr.device = "DOCUMENT"
+                
+                    refer = prod.ord & "/" & tttxt010.text
+
+                    stpapi.put.field("whinh2202m000", "order.number", str$(orno))
+                    stpapi.put.field("whinh2202m000", "order.origin", str$(order.origin))
+                    stpapi.put.field("whinh2202m000", "transaction.type", str$(transaction.type))
+                    stpapi.put.field("whinh2202m000", "item.segment.1", "         ")
+                    stpapi.put.field("whinh2202m000", "item.segment.2",str$(tisfc001.mitm))
+                    stpapi.put.field("whinh2202m000", "lot.selection", str$(lot.code))
+                    stpapi.put.field("whinh2202m000", "lot", str$(lot.num))
+                    stpapi.put.field("whinh2202m000", "qty.storage.unit", str$(whinh210.qoro))
+                    stpapi.put.field("whinh2202m000", "shipfrom.code", str$(shipfrom.code))
+                    stpapi.put.field("whinh2202m000", "item",str$(tisfc001.mitm))
+                    stpapi.put.field("whinh2202m000", "shipto.code", str$(shipto.code))
+                    stpapi.put.field("whinh2202m000", "shipto.loca", str$(shipto.loca))
+                    stpapi.put.field("whinh2202m000", "delivery.date", str$(delivery.date))
+                    stpapi.put.field("whinh2202m000", "receipt.date", str$(receipt.date))
+                    stpapi.put.field("whinh2202m000", "series", str$(series))
+                    stpapi.put.field("whinh2202m000", "order.type", str$(order.type))
+                    stpapi.put.field("whinh2202m000", "order.ref", str$(refer))
+
+                    stpapi.set.report("whinh2202m000", "rwhinh220211000", pr.device, error.msg)
+
+                    stpapi.form.command("whinh2202m000", 5, "exec.cont.process", form2.msg)
+            
+                    if not isspace(form2.msg) then
+                        message("%s", form2.msg)
+                    endif
+
+                    if not isspace(error.msg) then
+                        message("%s", error.msg)
+                    endif 	
+
+                    stpapi.end.session("whinh2202m000")
+
+                    if flag = 1 then
+                        select whinh200.orno, whinh200.refe
+                        from whinh200
+                        where whinh200.refe = :refer and whinh200.sfco = "WCG9" and whinh200.stco = "Q11"
+                        group by whinh200.orno, whinh200.refe
+                        selectdo
+                            message("Warehousing Order : %s", whinh200.orno)
+                            query.extend.where.in.zoom("whinh200.orno ='"&whinh200.orno&"'")
+                            start.session(MODELESS,"whinh2100m100","","") 
+                            
+                        
+                        endselect
+                    endif
+                selectempty				
+                    message("No Lot number detect")								
+                endselect
+            endif
+
+            
+        selectempty				
+                message("No WD Work Order found in Production Order Text")								
+        endselect
+							
+    endselect
+		
+}
+
