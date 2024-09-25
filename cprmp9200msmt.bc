@@ -1,0 +1,330 @@
+|******************************************************************************
+|* cprmp9200msmt  0  VRC B61C a  smt 
+|* Generate VMI Forecast
+|* hychia
+|* 2017-10-09 [16:53]
+|* Last Modify : 7-Aug-2018
+|* Last Modify by : HY Chia
+|******************************************************************************
+|* Script Type: 123
+|******************************************************************************
+                                                                                
+|****************************** DECLARATION SECTION ***************************
+declaration:
+
+	#include <bic_dam>
+
+	table	tcprmp900 | VMI Forecast
+	table	tcprrp100 | Planned Order
+	table	tcprao020 | PO Reschedule
+	table	tcprmp420 | Plan Periods
+	table	ttcibd001 | Item General
+	table	twhwmd215 | Warehouse Inventory
+	table	ttcmcs003 | Warehouses
+	table	ttdipu001 | Item Purchase
+	table	ttdipu010 | Item Purchase - BP
+	table	ttccom001 | Emlloyees Data
+	table	ttdipu045 | Manufacturer PArt Number
+	table	ttdipu048 | Manufacturer PArt Number - BP
+	table	ttdpur400 | Purchase Order
+
+	extern	domain	tcplnc	plnc.f
+
+
+
+|****************************** choice section ********************************
+
+choice.cont.process:
+on.choice:
+	gen.vmi.fcst()
+
+
+|****************************** function section ******************************
+
+functions:
+
+function gen.vmi.fcst()
+{
+	drop.old.fcst()
+	gen.new.fcst.bckt()
+	gen.new.rsch.bckt()
+	upd.new.fcst()
+	po.rsch.fcst()
+	upd.obs.demand()
+	upd.itm.detail()
+
+}
+
+
+function drop.old.fcst()
+{
+	db.retry.point()
+
+	select cprmp900.*
+	from cprmp900 for update
+	selectdo
+		dal.destroy.object("cprmp900")
+	endselect
+
+	commit.transaction()
+}
+
+
+function gen.new.fcst.bckt()
+{
+	db.retry.point()
+
+	select cprrp100.suno, cprrp100.item
+	from cprrp100
+	where cprrp100.plnc = {:plnc.f}
+	and cprrp100.type = tckoor.cp.pur
+	group by cprrp100.suno, cprrp100.item
+	selectdo
+		select cprmp420.pern, cprmp420.sdat, cprmp420.fdat
+		from cprmp420
+		where cprmp420._index1 = {:plnc.f}
+		order by cprmp420.pern
+		selectdo
+
+			cprmp900.suno = cprrp100.suno
+			cprmp900.item = cprrp100.item
+			cprmp900.pern = cprmp420.pern
+			cprmp900.sdat = cprmp420.sdat
+			cprmp900.fdat = cprmp420.fdat
+
+			db.insert(tcprmp900, db.retry)
+			commit.transaction()
+		selectempty
+		endselect
+	selectempty
+	endselect
+
+	commit.transaction()
+}
+
+function gen.new.rsch.bckt()
+{
+	db.retry.point()
+
+	select cprao020.plni, cprao020.orno
+	from cprao020
+	where cprao020._index1 = {"BAAN", :plnc.f}
+	and (cprao020.sign = cprao.sign.reschedule.out or cprao020.sign = cprao.sign.reschedule.in)
+	group by cprao020.plni, cprao020.orno
+	selectdo
+		select tdpur400.otbp
+		from tdpur400
+		where tdpur400._index1 = {:cprao020.orno}
+		selectdo
+			select cprmp900.item
+			from cprmp900
+			where cprmp900._index1 = {:tdpur400.otbp, :cprao020.plni}
+			selectdo
+			selectempty
+				select cprmp420.pern, cprmp420.sdat, cprmp420.fdat
+				from cprmp420
+				where cprmp420._index1 = {:plnc.f}
+				order by cprmp420.pern
+				selectdo
+					cprmp900.suno = tdpur400.otbp
+					cprmp900.item = cprao020.plni
+					cprmp900.pern = cprmp420.pern
+					cprmp900.sdat = cprmp420.sdat
+					cprmp900.fdat = cprmp420.fdat
+
+					db.insert(tcprmp900, db.retry)
+					commit.transaction()
+				selectempty
+				endselect
+			endselect
+		selectempty
+		endselect
+	selectempty
+	endselect
+
+	commit.transaction()
+}
+
+function upd.new.fcst()
+{
+	db.retry.point()
+
+	select cprmp900.*
+	from cprmp900 for update
+	selectdo
+		select cprrp100.quan
+		from cprrp100
+		where cprrp100.suno = :cprmp900.suno
+		and cprrp100.item = :cprmp900.item
+		and cprrp100.prdt >= :cprmp900.sdat
+		and cprrp100.prdt <= :cprmp900.fdat
+		and cprrp100.type = tckoor.cp.pur
+		selectdo
+			cprmp900.quan = cprmp900.quan + cprrp100.quan
+		selectempty
+		endselect
+
+		db.update(tcprmp900, db.retry)
+		commit.transaction()
+
+		cprmp900.quan = 0
+	selectempty
+	endselect
+
+	commit.transaction()
+}
+
+function po.rsch.fcst()
+{
+	db.retry.point()
+
+	select cprmp900.*
+	from cprmp900 for update
+	selectdo
+		select cprao020.quan
+		from cprao020
+		where cprao020._index1 = {"BAAN", :plnc.f, :cprmp900.item}
+		and cprao020.resd >= :cprmp900.sdat
+		and cprao020.resd <= :cprmp900.fdat
+		and (cprao020.sign = cprao.sign.reschedule.out or cprao020.sign = cprao.sign.reschedule.in)
+		selectdo
+			select tdpur400.otbp
+			from tdpur400
+			where tdpur400._index1 = {:cprao020.orno}
+			selectdo
+				cprmp900.quan = cprmp900.quan + cprao020.quan
+			selectempty
+				cprmp900.quan = cprmp900.quan
+			endselect
+		selectempty
+		endselect
+
+		db.update(tcprmp900, db.retry)
+		commit.transaction()
+	selectempty
+	endselect
+
+	commit.transaction()
+}
+
+function upd.obs.demand()
+{
+	db.retry.point()
+
+	select cprmp900.*
+	from cprmp900 for update
+	where cprmp900.pern = 1
+	selectdo
+		select cprrp100.quan
+		from cprrp100
+		where cprrp100.suno = :cprmp900.suno
+		and cprrp100.item = :cprmp900.item
+		and cprrp100.prdt < :cprmp900.sdat
+		and cprrp100.type = tckoor.cp.pur
+		selectdo
+			cprmp900.quan = cprmp900.quan + cprrp100.quan
+		selectempty
+		endselect
+
+		db.update(tcprmp900, db.retry)
+		commit.transaction()
+
+		cprmp900.quan = 0
+	selectempty
+	endselect
+
+	commit.transaction()
+}
+
+
+function upd.itm.detail()
+{
+	db.retry.point()
+
+	select cprmp900.*
+	from cprmp900 for update
+	selectdo
+		select tcibd001.dsca
+		from tcibd001
+		where tcibd001._index1 = {:cprmp900.item(4;47)}
+		selectdo
+			cprmp900.dsca = tcibd001.dsca
+		selectempty
+			cprmp900.dsca = ""
+		endselect
+
+		cprmp900.qhnd = 0
+
+		select whwmd215.qhnd, whwmd215.cwar
+		from whwmd215
+		where whwmd215._index2 = {:cprmp900.item(4;47)}
+		selectdo
+			select tcmcs003.cwar
+			from tcmcs003
+			where tcmcs003._index1 = {:whwmd215.cwar}
+			and tcmcs003.inep = tcyesno.yes
+			selectdo
+				cprmp900.qhnd = cprmp900.qhnd + whwmd215.qhnd
+			selectempty
+			endselect
+		selectempty
+		endselect
+
+		select tdipu001.buyr, tdipu001.suti
+		from tdipu001
+		where tdipu001._index1 = {:cprmp900.item(4;47)}
+		selectdo
+			cprmp900.emno = tdipu001.buyr
+			cprmp900.suti = tdipu001.suti
+
+			select tccom001.nama
+			from tccom001
+			where tccom001._index1 = {:tdipu001.buyr}
+			selectdo
+				cprmp900.name = tccom001.nama
+			selectempty
+				cprmp900.name = ""
+			endselect
+		selectempty
+			cprmp900.emno = ""
+			cprmp900.name = ""
+			cprmp900.suti = 0
+		endselect
+
+		select tdipu010.suti
+		from tdipu010
+		where tdipu010.item = :cprmp900.item(4;47)
+		and tdipu010.otbp = :cprmp900.suno
+		selectdo
+			cprmp900.suti = tdipu010.suti
+		selectempty
+		endselect
+
+		select tdipu045.mpnr, tdipu045.cmnf
+		from tdipu045
+		where tdipu045._index3 = {:cprmp900.item(4;47)}
+		selectdo
+			cprmp900.mpnr = tdipu045.mpnr
+			cprmp900.cmnf = tdipu045.cmnf
+		selectempty
+			cprmp900.mpnr = ""
+			cprmp900.cmnf = ""
+		endselect
+
+		select tdipu048.mpnr, tdipu048.cmnf
+		from tdipu048
+		where tdipu048._index1 = {:cprmp900.item(4;47), :cprmp900.suno}
+		and tdipu048.pmpn = tcyesno.yes
+		selectdo
+			cprmp900.mpnr = tdipu048.mpnr
+			cprmp900.cmnf = tdipu048.cmnf
+		selectempty
+		endselect
+
+		db.update(tcprmp900, db.retry)
+		commit.transaction()
+	selectempty
+	endselect
+
+	commit.transaction()
+}

@@ -1,0 +1,432 @@
+|******************************************************************************
+|* cprmp9210msmt  0  VRC B61C a  smt 
+|* Update Item Critical List
+|* hychia
+|* 2018-06-25 [16:53]
+|* Last Modify : 21-Sep-2018
+|* Last Modify by : HY Chia
+|******************************************************************************
+|* Script Type: 123
+|******************************************************************************
+                                                                                
+|****************************** DECLARATION SECTION ***************************
+|Calculation Details:-
+|
+|1. Planned movement by MRP result
+|	a) Planned receive	- Skipped
+|	b) Planned Issue	- Demand
+|
+|2. Schedule movement by created order (PO, SO, Warehouse Transfer, Production Order, Cycle Count, Adjustment etc..)
+|	a) Receive					-	supply
+|	b) Issue					-	demand
+|	c) not nettable receive				-	demand
+|	d) not nettbale issue				-	supply
+|	e) Purchase Order confirmed received date = 0	-	demand
+|	f) Non approved Purchase Order			-	demand
+|******************************************************************************
+declaration:
+
+	#include <bic_dam>
+
+	table	tcprrp010 | Plan Inventory Movement
+	table	tcprmp910 | Item Critical List
+	table	ttccom100 | Business Partner
+	table	ttcmcs060 | Manufacturer
+	table	tcprrp100 | Planned Order
+	table	tcprao020 | PO Reschedule
+	table	tcprmp420 | Plan Periods
+	table	ttcibd001 | Item General
+	table	twhwmd215 | Warehouse Inventory
+	table	ttcmcs003 | Warehouses
+	table	ttdipu001 | Item Purchase
+	table	ttdipu010 | Item Purchase - BP
+	table	ttccom001 | Employees Data
+	table	ttdipu045 | Manufacturer PArt Number
+	table	ttdipu048 | Manufacturer PArt Number - BP
+	table	twhinp100 | Planned Transaction
+	table	tcprpd400 | Scenario Master
+	table	ttdpur401 | Purchase Order Line
+
+
+	extern	domain	tcplnc	plnc.f
+	extern	domain	tcquan	sum.quan
+	extern	domain	tcquan	tmp.qana
+	extern	domain	tcquan	tmp.qhnd
+
+
+
+|****************************** choice section ********************************
+
+choice.cont.process:
+on.choice:
+	gen.cri.lst()
+
+
+|****************************** function section ******************************
+
+functions:
+
+function gen.cri.lst()
+{
+	drop.old.cri.lst()
+	gen.new.itm.lst()
+	upd.wek.demand()
+}
+
+
+function drop.old.cri.lst()
+{
+	db.retry.point()
+
+	select cprmp910.*
+	from cprmp910 for update
+	selectdo
+		dal.destroy.object("cprmp910")
+	endselect
+
+	commit.transaction()
+}
+
+
+function gen.new.itm.lst()
+{
+	db.retry.point()
+
+	select cprpd400.plsd
+	from cprpd400
+	where cprpd400._index1 = {:plnc.f}
+	selectdo
+	selectempty
+		cprpd400.plsd = 0
+	endselect
+
+	select tcibd001.item, tcibd001.dsca, tcibd001.citg
+	from tcibd001
+	where tcibd001._index6 = tckitm.purchase
+	selectdo
+		cprmp910.item = "   " & tcibd001.item
+		cprmp910.stdt = cprpd400.plsd + (14 * 24 * 60 * 60)
+		cprmp910.dsca = tcibd001.dsca
+		cprmp910.citg = tcibd001.citg
+
+		select cprrp010.plni
+		from cprrp010
+		where cprrp010._index2 = {:plnc.f, "   " & :tcibd001.item}
+		and cprrp010.kotr = tckotr.requirement
+		as set with 1 rows
+		selectdo
+			insert.new.item()
+		selectempty
+			select whinp100.item
+			from whinp100
+			where whinp100._index2 = {:tcibd001.item}
+			as set with 1 rows
+			selectdo
+				insert.new.item()
+			selectempty
+			endselect
+		endselect
+	selectempty
+		cprmp910.item = ""
+		cprmp910.stdt = 0
+		cprmp910.dsca = ""
+		cprmp910.citg = ""
+	endselect
+}
+
+function insert.new.item()
+{
+	select tdipu001.buyr, tdipu001.suti
+	from tdipu001
+	where tdipu001._index1 = {:tcibd001.item}
+	selectdo
+		cprmp910.emno = tdipu001.buyr
+		cprmp910.suti = tdipu001.suti
+
+		select tccom001.nama
+		from tccom001
+		where tccom001._index1 = {:tdipu001.buyr}
+		selectdo
+		cprmp910.name = tccom001.nama
+		selectempty
+		cprmp910.name = ""
+		endselect
+	selectempty
+		cprmp910.emno = ""
+		cprmp910.name = ""
+		cprmp910.suti = 0
+	endselect
+
+	cprmp910.qhnd = 0
+
+	select whwmd215.qhnd, whwmd215.cwar
+	from whwmd215
+	where whwmd215._index2 = {:tcibd001.item}
+	selectdo
+		select tcmcs003.cwar
+		from tcmcs003
+		where tcmcs003._index1 = {:whwmd215.cwar}
+		and tcmcs003.inep = tcyesno.yes
+		selectdo
+		cprmp910.qhnd = cprmp910.qhnd + whwmd215.qhnd
+		selectempty
+		endselect
+	selectempty
+	endselect
+
+	select tdipu010.suti, tdipu010.otbp
+	from tdipu010
+	where tdipu010.item = :tcibd001.item
+	order by tdipu010.suti, tdipu010.otbp desc
+	selectdo
+		cprmp910.bpid = tdipu010.otbp
+		cprmp910.suti = tdipu010.suti
+	selectempty
+		cprmp910.bpid = ""
+	endselect
+
+	select tccom100.nama
+	from tccom100
+	where tccom100._index1 = {:tdipu010.otbp}
+	selectdo
+		cprmp910.nama = tccom100.nama
+	selectempty
+		cprmp910.nama = ""
+	endselect
+
+	select tdipu045.mpnr, tdipu045.cmnf
+	from tdipu045
+	where tdipu045._index3 = {:tcibd001.item}
+	selectdo
+		cprmp910.mpnr = tdipu045.mpnr
+		cprmp910.cmnf = tdipu045.cmnf
+	selectempty
+		cprmp910.mpnr = ""
+		cprmp910.cmnf = ""
+	endselect
+
+	select tdipu048.mpnr, tdipu048.cmnf
+	from tdipu048
+	where tdipu048._index1 = {:tcibd001.item, :cprmp910.bpid}
+	and tdipu048.pmpn = tcyesno.yes
+	selectdo
+		cprmp910.mpnr = tdipu048.mpnr
+		cprmp910.cmnf = tdipu048.cmnf
+	selectempty
+	endselect
+
+	select tcmcs060.dsca
+	from tcmcs060
+	where tcmcs060._index1 = {:cprmp910.cmnf}
+	selectdo
+		cprmp910.mnfn = tcmcs060.dsca
+	selectempty
+		cprmp910.mnfn = ""
+	endselect
+
+	select sum(whinp100.qana):tmp.qana
+	from whinp100
+	where whinp100._index1 = {tckoor.act.pur}
+	and whinp100._index2 = {:tcibd001.item}
+	selectdo
+		cprmp910.qopo = tmp.qana
+	selectempty
+		cprmp910.qopo = 0
+	endselect
+
+	db.insert(tcprmp910, db.retry)
+	commit.transaction()	
+}
+
+function upd.wek.demand()
+{
+	db.retry.point()
+
+	select cprmp910.*
+	from cprmp910 for update
+	selectdo
+		cprmp910.wk01 = cprmp910.qhnd - cnt.wek.demand(1) + cnt.wek.supply(1)
+		cprmp910.wk02 = cprmp910.qhnd - cnt.wek.demand(2) + cnt.wek.supply(2)
+		cprmp910.wk03 = cprmp910.qhnd - cnt.wek.demand(3) + cnt.wek.supply(3)
+		cprmp910.wk04 = cprmp910.qhnd - cnt.wek.demand(4) + cnt.wek.supply(4)
+		cprmp910.wk05 = cprmp910.qhnd - cnt.wek.demand(5) + cnt.wek.supply(5)
+		cprmp910.wk06 = cprmp910.qhnd - cnt.wek.demand(6) + cnt.wek.supply(6)
+		cprmp910.wk07 = cprmp910.qhnd - cnt.wek.demand(7) + cnt.wek.supply(7)
+		cprmp910.wk08 = cprmp910.qhnd - cnt.wek.demand(8) + cnt.wek.supply(8)
+		cprmp910.wk09 = cprmp910.qhnd - cnt.wek.demand(9) + cnt.wek.supply(9)
+		cprmp910.wk10 = cprmp910.qhnd - cnt.wek.demand(10) + cnt.wek.supply(10)
+		cprmp910.wk11 = cprmp910.qhnd - cnt.wek.demand(11) + cnt.wek.supply(11)
+		cprmp910.wk12 = cprmp910.qhnd - cnt.wek.demand(12) + cnt.wek.supply(12)
+		cprmp910.wk13 = cprmp910.qhnd - cnt.wek.demand(13) + cnt.wek.supply(13)
+		cprmp910.wk14 = cprmp910.qhnd - cnt.wek.demand(14) + cnt.wek.supply(14)
+		cprmp910.wk15 = cprmp910.qhnd - cnt.wek.demand(15) + cnt.wek.supply(15)
+		cprmp910.wk16 = cprmp910.qhnd - cnt.wek.demand(16) + cnt.wek.supply(16)
+		cprmp910.wk17 = cprmp910.qhnd - cnt.wek.demand(17) + cnt.wek.supply(17)
+		cprmp910.wk18 = cprmp910.qhnd - cnt.wek.demand(18) + cnt.wek.supply(18)
+		cprmp910.wk19 = cprmp910.qhnd - cnt.wek.demand(19) + cnt.wek.supply(19)
+		cprmp910.wk20 = cprmp910.qhnd - cnt.wek.demand(20) + cnt.wek.supply(20)
+		cprmp910.wk21 = cprmp910.qhnd - cnt.wek.demand(21) + cnt.wek.supply(21)
+		cprmp910.wk22 = cprmp910.qhnd - cnt.wek.demand(22) + cnt.wek.supply(22)
+		cprmp910.wk23 = cprmp910.qhnd - cnt.wek.demand(23) + cnt.wek.supply(23)
+		cprmp910.wk24 = cprmp910.qhnd - cnt.wek.demand(24) + cnt.wek.supply(24)
+		cprmp910.wk25 = cprmp910.qhnd - cnt.wek.demand(25) + cnt.wek.supply(25)
+		cprmp910.wk26 = cprmp910.qhnd - cnt.wek.demand(26) + cnt.wek.supply(26)
+		cprmp910.wk27 = cprmp910.qhnd - cnt.wek.demand(27) + cnt.wek.supply(27)
+		cprmp910.wk28 = cprmp910.qhnd - cnt.wek.demand(28) + cnt.wek.supply(28)
+		cprmp910.wk29 = cprmp910.qhnd - cnt.wek.demand(29) + cnt.wek.supply(29)
+		cprmp910.wk30 = cprmp910.qhnd - cnt.wek.demand(30) + cnt.wek.supply(30)
+		cprmp910.wk31 = cprmp910.qhnd - cnt.wek.demand(31) + cnt.wek.supply(31)
+		cprmp910.wk32 = cprmp910.qhnd - cnt.wek.demand(32) + cnt.wek.supply(32)
+		cprmp910.wk33 = cprmp910.qhnd - cnt.wek.demand(33) + cnt.wek.supply(33)
+		cprmp910.wk34 = cprmp910.qhnd - cnt.wek.demand(34) + cnt.wek.supply(34)
+		cprmp910.wk35 = cprmp910.qhnd - cnt.wek.demand(35) + cnt.wek.supply(35)
+		cprmp910.wk36 = cprmp910.qhnd - cnt.wek.demand(36) + cnt.wek.supply(36)
+		cprmp910.wk37 = cprmp910.qhnd - cnt.wek.demand(37) + cnt.wek.supply(37)
+		cprmp910.wk38 = cprmp910.qhnd - cnt.wek.demand(38) + cnt.wek.supply(38)
+		cprmp910.wk39 = cprmp910.qhnd - cnt.wek.demand(39) + cnt.wek.supply(39)
+		cprmp910.wk40 = cprmp910.qhnd - cnt.wek.demand(40) + cnt.wek.supply(40)
+		cprmp910.wk41 = cprmp910.qhnd - cnt.wek.demand(41) + cnt.wek.supply(41)
+		cprmp910.wk42 = cprmp910.qhnd - cnt.wek.demand(42) + cnt.wek.supply(42)
+		cprmp910.wk43 = cprmp910.qhnd - cnt.wek.demand(43) + cnt.wek.supply(43)
+		cprmp910.wk44 = cprmp910.qhnd - cnt.wek.demand(44) + cnt.wek.supply(44)
+		cprmp910.wk45 = cprmp910.qhnd - cnt.wek.demand(45) + cnt.wek.supply(45)
+		cprmp910.wk46 = cprmp910.qhnd - cnt.wek.demand(46) + cnt.wek.supply(46)
+		cprmp910.wk47 = cprmp910.qhnd - cnt.wek.demand(47) + cnt.wek.supply(47)
+		cprmp910.wk48 = cprmp910.qhnd - cnt.wek.demand(48) + cnt.wek.supply(48)
+		cprmp910.wk49 = cprmp910.qhnd - cnt.wek.demand(49) + cnt.wek.supply(49)
+		cprmp910.wk50 = cprmp910.qhnd - cnt.wek.demand(50) + cnt.wek.supply(50)
+		cprmp910.wk51 = cprmp910.qhnd - cnt.wek.demand(51) + cnt.wek.supply(51)
+		cprmp910.wk52 = cprmp910.qhnd - cnt.wek.demand(52) + cnt.wek.supply(52)
+		cprmp910.wk53 = cprmp910.qhnd - cnt.wek.demand(53) + cnt.wek.supply(53)
+		cprmp910.wk54 = cprmp910.qhnd - cnt.wek.demand(54) + cnt.wek.supply(54)
+		cprmp910.wk55 = cprmp910.qhnd - cnt.wek.demand(55) + cnt.wek.supply(55)
+		cprmp910.wk56 = cprmp910.qhnd - cnt.wek.demand(56) + cnt.wek.supply(56)
+		cprmp910.wk57 = cprmp910.qhnd - cnt.wek.demand(57) + cnt.wek.supply(57)
+		cprmp910.wk58 = cprmp910.qhnd - cnt.wek.demand(58) + cnt.wek.supply(58)
+		cprmp910.wk59 = cprmp910.qhnd - cnt.wek.demand(59) + cnt.wek.supply(59)
+		cprmp910.wk60 = cprmp910.qhnd - cnt.wek.demand(60) + cnt.wek.supply(60)
+
+
+		db.update(tcprmp910, db.retry)
+		commit.transaction()
+	selectempty
+	endselect
+
+	commit.transaction()
+}
+
+function domain tcquan cnt.wek.demand(long i)
+{
+	tmp.qhnd = 0
+
+	|1.b) Planned Issue.
+	select cprrp010.qana
+	from cprrp010
+	where cprrp010._index2 = {:plnc.f, :cprmp910.item}
+	and cprrp010.kotr = tckotr.requirement
+	and cprrp010.date < :cprmp910.stdt + (:i * 7 * 24 * 60 * 60)
+	selectdo
+		tmp.qhnd = tmp.qhnd + cprrp010.qana
+	selectempty
+	endselect
+
+	|2.b) Issue
+	select whinp100.qana
+	from whinp100
+	where whinp100._index2 = {:cprmp910.item(4;47)}
+	and whinp100.kotr = tckotr.requirement
+	and whinp100.date < :cprmp910.stdt + (:i * 7 * 24 * 60 * 60)
+	selectdo
+		tmp.qhnd = tmp.qhnd + whinp100.qana
+	selectempty
+	endselect
+
+	|2.c) not nettable receive
+	select whinp100.cwar, whinp100.qana
+	from whinp100
+	where whinp100._index2 = {:cprmp910.item(4;47)}
+	and whinp100.kotr = tckotr.receipt
+	and whinp100.date < :cprmp910.stdt + (:i * 7 * 24 * 60 * 60)
+	selectdo
+		select tcmcs003.cwar
+		from tcmcs003
+		where tcmcs003._index1 = {:whinp100.cwar}
+		and tcmcs003.inep = tcyesno.no
+		selectdo
+			tmp.qhnd = tmp.qhnd + whinp100.qana
+		selectempty
+		endselect
+	selectempty
+	endselect
+
+	|2.e) Purchase Order confirmed received date = 0
+	select whinp100.orno, whinp100.pono, whinp100.ponb, whinp100.qana
+	from whinp100
+	where whinp100._index1 = tckoor.act.pur
+	and whinp100._index2 = {:cprmp910.item(4;47)}
+	and whinp100.kotr = tckotr.receipt
+	and whinp100.date < :cprmp910.stdt + (:i * 7 * 24 * 60 * 60)
+	selectdo
+		select tdpur401.ddtc
+		from tdpur401
+		where tdpur401._index1 = {:whinp100.orno, :whinp100.pono, :whinp100.ponb}
+		and tdpur401.ddtc = 0
+		selectdo
+			tmp.qhnd = tmp.qhnd + whinp100.qana
+		selectempty
+		endselect
+	selectempty
+	endselect
+
+	|2.f) Non approved Purchase Order
+	select whinp100.qana
+	from whinp100
+	where whinp100._index1 = tckoor.act.pur.adv
+	and whinp100._index2 = {:cprmp910.item(4;47)}
+	and whinp100.kotr = tckotr.receipt
+	and whinp100.date < :cprmp910.stdt + (:i * 7 * 24 * 60 * 60)
+	selectdo
+		tmp.qhnd = tmp.qhnd + whinp100.qana
+	selectempty
+	endselect
+
+	return(tmp.qhnd)
+}
+
+
+function domain tcquan cnt.wek.supply(long i)
+{
+	tmp.qhnd = 0
+
+
+	|2.a) Receive
+	select whinp100.qana
+	from whinp100
+	where whinp100._index2 = {:cprmp910.item(4;47)}
+	and whinp100.kotr = tckotr.receipt
+	and whinp100.date < :cprmp910.stdt + (:i * 7 * 24 * 60 * 60)
+	selectdo
+		tmp.qhnd = tmp.qhnd + whinp100.qana
+	selectempty
+	endselect
+
+	|2.d) not nettable issue
+	select whinp100.cwar, whinp100.qana
+	from whinp100
+	where whinp100._index2 = {:cprmp910.item(4;47)}
+	and whinp100.kotr = tckotr.requirement
+	and whinp100.date < :cprmp910.stdt + (:i * 7 * 24 * 60 * 60)
+	selectdo
+		select tcmcs003.cwar
+		from tcmcs003
+		where tcmcs003._index1 = {:whinp100.cwar}
+		and tcmcs003.inep = tcyesno.no
+		selectdo
+			tmp.qhnd = tmp.qhnd + whinp100.qana
+		selectempty
+		endselect
+	selectempty
+	endselect
+
+	return(tmp.qhnd)
+}

@@ -1,0 +1,109 @@
+                                                                                
+#include <bic_dam>
+#pragma used dll "ottdllbw"
+#pragma	used dll ottstpapihand	| Baan API Handler
+#include <bic_desktop>
+#include <bic_cmf>
+
+	table	ttdpur400 | PO Header
+	table	ttdpur401 | PO Lines
+	table	ttdpur451 | PO Lines History
+	table   ttdpur901 | Control Items
+	table	ttcibd001 | Item Master
+	table	ttcibd003 | Convert Factor
+	table	ttccom001 | Employee
+	table	ttccom100 | Business Partner
+
+	extern  domain  tcitem		item.f    fixed
+	extern  domain  tcitem		item.t    fixed
+	extern	domain	tcpmd.date	date.f
+	extern	domain	tcdate		appr.date.f
+	extern	domain	tcdate		appr.date.t
+	extern	domain	tcyesno		ctrl.yn
+	extern	domain	tcyesno		qtyz.yn
+	extern	domain	tcqrd1		cal.qty
+
+
+|Functions:	
+function extern string before.save.object(
+    string Requester(5),
+    string Req_Dept(3),
+    domain tcitem i_item)
+{
+string 	o.error(100), error.msg(100),rqno(20)
+long	 ret6
+| string current_txta(100)
+
+            DllUsage
+            Expl      : AFS to generate CRM attentions 
+            Pre       : NA
+            Post      : NA
+            Input     :i.catt -> Attention Code
+                        i.dsca -> Attention Description
+                        i_item -> Issued Item Code
+            Output :
+                            o.error -> Error Msg
+
+            Return  : Add Attention 
+            EndDllUsage
+                                        
+            | domain tcpdno  v.result
+            rqno = ""
+            error.msg = ""
+
+            stpapi.form.command("tdpur2600m000", 5, "exec.add.set",o.error)
+            if not isspace(o.error) then
+                return(o.error)
+            endif
+    | stpapi.get.field("tdpur2600m000", "tdpur200.txta", current_txta, 100)
+    | print("Current value of tdpur200.txta: ", current_txta)
+
+            stpapi.put.field("tdpur2600m000", "tdpur200.remn", Requester)
+            stpapi.put.field("tdpur2600m000", "tdpur200.rdep", Req_Dept)
+            | stpapi.put.field("tdpur2600m000", "tdpur200.remn", str$("00122"))
+            | stpapi.put.field("tdpur2600m000", "tdpur200.rdep", str$("WRH"))
+            stpapi.put.field("tdpur2600m000", "tdpur200.refa", str$("REQ:CHING/357"))
+            stpapi.put.field("tdpur2600m000", "tdpur200.rqno", str$("Q15"))
+            |stpapi.put.field("tdpur2600m000", "tdpur200.txta", str$("text"))
+
+            ret6 = stpapi.insert("tdpur2600m000", true, error.msg)
+            if not isspace(error.msg) then
+                return(error.msg)
+            endif
+
+            stpapi.get.field("tdpur2600m000", "tdpur200.rqno", rqno,11)
+            stpapi.put.field("tdpur2600m000", "tdpur200.refb", rqno)
+            stpapi.update("tdpur2600m000", true, error.msg)
+
+                | ret6 = stpapi.synchronize.dialog("tdpur2502m000", "add", error.msg)
+                stpapi.form.command("tdpur2502m000", 5, "exec.add.set",o.error)
+
+                stpapi.put.field("tdpur2502m000", "tdpur201.rqno", rqno)
+                stpapi.put.field("tdpur2502m000", "tdpur201.pono", str$("10"))
+						stpapi.put.field("tdpur2502m000", "item.segment.1", "         ")
+						stpapi.put.field("tdpur2502m000", "item.segment.2",str$(i_item))
+						stpapi.put.field("tdpur2502m000", "item",str$(i_item))
+                | stpapi.put.field("tdpur2502m000", "tdpur201.item", str$("Z02"))
+                | stpapi.put.field("tdpur2502m000", "item.segment.1", "         ")
+                | stpapi.put.field("tdpur2502m000", "item.segment.1", str$("Z02"))
+                | stpapi.put.field("tdpur2502m000", "item.segment.2",str$("Z02"))
+                | stpapi.put.field("whinh2202m000", "item.segment.2",str$("         Z02"))
+                stpapi.put.field("tdpur2502m000", "tdpur201.nids", "Consumable")
+                stpapi.put.field("tdpur2502m000", "tdpur201.qoor", "1")
+                stpapi.put.field("tdpur2502m000", "tdpur201.cuqp", str$("pcs"))
+                stpapi.put.field("tdpur2502m000", "tdpur201.pric", "0.12")
+                stpapi.put.field("tdpur2502m000", "tdpur201.otbp", str$("SA0000028"))
+                ret6 = stpapi.insert("tdpur2502m000", true, error.msg)
+                if not ret6 then
+                    | ret6 = stpapi.recover("whinh3820m000", error.msg)
+                    stpapi.end.session("tdpur2600m000", error.msg)
+                    return(error.msg)
+                endif
+
+            stpapi.end.session("tdpur2600m000", error.msg)
+
+            return(rqno)
+
+
+	
+}

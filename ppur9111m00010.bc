@@ -1,0 +1,135 @@
+|******************************************************************************
+|* tiedm9999m000  0  VRC B61C a  cus 
+|* Import Purchase Order (Customize)
+|* Jh Chen                                                                                            
+|* 2023-11-27
+|******************************************************************************
+|* Main table tdpur410 Purchase Order Line Form
+|******************************************************************************
+                                                                                
+|****************************** declaration section ***************************
+declaration:
+#include <bic_dam>
+#pragma used dll "ottdllbw"
+#pragma	used dll ottstpapihand	| Baan API Handler
+#include <bic_desktop>
+
+	
+    table   ttdpur911	| LMW HS Code
+
+    extern  domain  tdlmw.dsca      hs_ldsc
+    extern  domain  tdlmw.code      hs_lmwc   
+
+    long	ret5, ret6
+|****************************** program section ********************************
+before.program:
+	
+    if get.compnr() <> 900 then	| Cancel Upload data
+        message("This Function only open for company 903 to Test!")
+
+		stop()
+
+	endif
+
+
+|****************************** group section **********************************
+
+group.1:
+init.group:
+   get.screen.defaults()
+   
+
+|****************************** functions **************************************
+Functions:
+
+ function extern upload.request()
+ {		
+ 	|****************** Upload File into Server *************************
+ 	long	ret, ret1, count, ret2, input.fp
+ 	long 	check1
+ 	string	filename2(200)
+ 	string	curr.line(2048)
+ 	domain	tcmcs.str100	filename
+ 	long 	str.no, i, pos.1
+ 	string	temp.txt(250), instr(1)
+ 	string	err.msg(200)
+
+ 	ret1 = 0
+	
+ 	filename2 = "${BSE}/tmp_import/Upload_Hs_Code.csv"
+
+	if get.ui.mode() = 1 then
+		ret2 =  client2server("", filename2, false, false,true)
+	else
+		ret2 =  client.upload.file(filename2) 
+	endif
+
+	if ret2 <> 0 then	| Cancel Upload data
+		stop()
+
+	endif
+	
+
+	temp.txt = trim$(get.local.filename())
+	str.no = len(temp.txt)
+
+	for i = 1 to str.no
+        instr = temp.txt(i;1)
+        
+        if instr = "\" then
+            pos.1 = i  
+        endif
+	endfor
+
+ 	filename = temp.txt(pos.1+1)
+	
+ 	input.fp = seq.open(strip$(filename2),"rt")
+
+ 	if input.fp < 1 then
+ 		message("File Cannot be uploaded.")
+ 		return
+
+    else
+        seq.rewind(input.fp)
+        ret1 = seq.gets(curr.line, 2048, input.fp)
+
+		while ret1 = 0
+
+            ret1 = seq.gets(curr.line, 2048, input.fp)
+                | Check the Column have more then 3 or not
+                check1 = string.scan(curr.line, "%s,%s", hs_ldsc, hs_lmwc)   
+              
+                if check1 <> 3 then
+                    message("Invalid Fields.\n\nPlease check your field in your upload file.")
+                    stop()
+
+                endif 
+
+
+                |***** Insert Purchase Order Line (ttdpur401) *****
+                db.retry.point()
+                select tdpur911.*
+                from tdpur911
+                where tdpur911.ldsc = :hs_ldsc and tdpur911.lmwc = :hs_lmwc
+				selectdo
+                    
+                    tdpur911.lmwc = str$(hs_lmwc)
+                    db.update(ttdpur911, db.retry)
+		            commit.transaction()
+                        
+                    selectempty
+                       
+                    tdpur911.ldsc = str$(hs_ldsc)
+                    tdpur911.lmwc = str$(hs_lmwc)
+                    db.insert(ttdpur911, db.retry)
+		            commit.transaction()
+ 
+                    endselect
+            
+	    endwhile
+
+        if ret6 = 0 then
+		ret2 = seq.close(input.fp)
+		
+	endif
+ }

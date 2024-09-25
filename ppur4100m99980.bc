@@ -1,0 +1,68 @@
+|******************************************************************************
+|* tdpur4100m9999  0  VRC B61C a  cus 
+|* Purchase Order API
+|* baan
+|* 01-08-24 [00:51]
+|******************************************************************************
+|* Script Type: 123
+|******************************************************************************
+  
+
+
+#include <bic_dal2>
+#include <bic_dam>
+
+#pragma used dll ottstpapihand
+#pragma used dll ottdllbw
+
+
+
+table	ttdpur400
+
+function extern string purchase_order_api(
+	string business_partner(9),
+	string address(9),
+	string order_type(3),
+	string purchase_office(6),
+	string order(9)
+	)
+{
+
+	string	pr.device(8)
+	domain tcmcs.str100 o.error
+	long	 ret
+
+	o.error = "Test"
+	pr.device = "D"
+
+			|* Create/update Purchase Order
+
+			if isspace(order) then
+ 				return("No PO Found")
+			else
+
+				select tdpur400.*
+				from tdpur400 for update
+				where tdpur400.orno = :order
+				as set with 1 rows
+				selectdo
+					ret = dal.change.object("tdpur400")
+					dal.set.field("tdpur400.orno", order)
+				selectempty
+					ret = dal.new.object("tdpur400")
+					dal.set.field("tdpur400.otbp", business_partner)
+					dal.set.field("tdpur400.otad", address)
+					dal.set.field("tdpur400.cotp", order_type )
+					dal.set.field("tdpur400.cofc", purchase_office )
+					dal.set.field("tdpur400.orno", order )
+				endselect
+
+				ret = dal.save.object("tdpur400")
+				if ret <> 0 then
+					return("Cannot generate PO")
+				endif
+			endif
+
+	return(o.error)
+
+}

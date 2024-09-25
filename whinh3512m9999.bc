@@ -1,0 +1,73 @@
+|******************************************************************************
+|* ttcmcs122dll999  0  VRC B61O a  ext 
+|* Warehouse receipt
+|* JH Chen
+|* Jul 8 24 [10:02]
+|******************************************************************************
+|* Script Type: General Library
+|******************************************************************************
+
+table	twhinh310
+
+#pragma used dll ottstpapihand
+#pragma used dll ottdllbw
+
+function extern string warehouse_order(
+	domain whinh.pksp i_packingslip,
+	domain whinh.shpm i_rcnumber
+	)
+{
+   
+                string	pr.device(8),rcno(10) 
+				domain tcmcs.str100 o.message
+
+                o.message = ""
+    			pr.device = "D"
+                long       retval
+				
+				| *******Easy Entry Warehousing Order******* |
+
+					select whinh310.rcno
+					from whinh310
+					where whinh310.rcno = :i_rcnumber
+					selectdo
+						rcno = trim$(whinh310.rcno)
+					selectempty
+						rcno = "RC"
+					endselect
+
+					stpapi.form.command("whinh3512m000", 5, "option.new.receipt", o.message)
+					
+					if not isspace(o.message) then
+						return("New Error: " & o.message)
+					else
+                        stpapi.put.field("whinh3512m000", "whinh310.rcno", rcno)
+                        stpapi.put.field("whinh3512m000", "whinh310.dino", i_packingslip)
+                        stpapi.put.field("whinh3512m000", "whinh310.cwar", str$("RAW"))
+                        stpapi.put.field("whinh3512m000", "easy.number", str$("P56000002"))
+                        stpapi.put.field("whinh3512m000", "easy.line", str$("1"))
+
+                       	stpapi.insert( "whinh3512m000", 1, o.message )
+                        if not isspace(o.message) then
+                            stpapi.recover("whinh3512m000",o.message)
+                            return("New insert: " & o.message)
+                        else
+							stpapi.form.command("whinh3512m000", 0, "option.receive", o.message)
+							if not isspace(o.message) then
+								return("receive Error: " & o.message)
+							else
+							
+							stpapi.get.field("whinh3512m000","whinh310.rcno",o.message)
+							endif
+						endif
+                     
+                    endif
+
+                stpapi.end.session("whinh3512m000",o.message)
+               
+                return(o.message)
+               
+
+                      
+			
+}

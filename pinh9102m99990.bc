@@ -1,0 +1,101 @@
+|******************************************************************************
+|* whinh9102m9999  0  VRC B61C a  cus 
+|* Test 2
+|* baan
+|* 23-05-24 
+|******************************************************************************
+|* Script Type: DAL
+|******************************************************************************
+
+#include <bic_dam>
+#pragma used dll "ottdllbw"
+#pragma	used dll ottstpapihand	| Baan API Handler
+#include <bic_desktop>
+#include <bic_cmf>
+
+extern	domain	whinh.oorg	order.origin
+long	 ret6
+
+
+|****************************** function **********************************
+
+|Functions:	
+function extern string before.save.object(long type)
+{
+string 	form1.msg(100),form2.msg(100), pr.device(8), o.error(100), error.msg(100),orno(20)
+domain	tclsel		lot.code
+domain	tcclot		lot.num
+
+|lot.code = tclsel.any
+| lot.num = ""
+lot.code = tclsel.specific
+lot.num = "YTS000069REV00104835"
+
+order.origin = whinh.oorg.transfer.man
+pr.device = "DOCUMENT"
+
+                DllUsage
+                Expl      : AFS to generate CRM attentions 
+                Pre       : NA
+                Post      : NA
+                Input     :i.catt -> Attention Code
+                           i.dsca -> Attention Description
+                Output :
+                                o.error -> Error Msg
+
+                Return  : Add Attention 
+                EndDllUsage
+               
+                long retval
+                               
+                domain tcpdno  v.result
+
+                o.error = ""
+                v.result = "OK"
+    
+                	|stpapi.form.command("whinh2202m000", 5, "exec.add.set",o.error)
+					stpapi.form.command("whinh2100m000", 5, "start.easy.order.entry", form1.msg)
+
+                    stpapi.put.field("whinh2202m000", "order.number", "")
+                    | stpapi.put.field("whinh2202m000", "order.origin", "330")
+					stpapi.put.field("whinh2202m000", "order.origin", str$(order.origin))
+                    stpapi.put.field("whinh2202m000", "transaction.type", str$(72))
+                    stpapi.put.field("whinh2202m000", "item.segment.1", "         ")
+                    stpapi.put.field("whinh2202m000", "item.segment.2",str$("         54-99-14158-064G"))
+                    |stpapi.put.field("whinh2202m000", "lot.selection", str$("Any"))
+                    |stpapi.put.field("whinh2202m000", "lot", str$("YTS000069REV00104835"))
+					stpapi.put.field("whinh2202m000", "lot.selection", str$(lot.code))
+					stpapi.put.field("whinh2202m000", "lot", str$(lot.num))
+                    stpapi.put.field("whinh2202m000", "qty.storage.unit", str$("1"))
+                    stpapi.put.field("whinh2202m000", "shipfrom.code", str$("P9SM26"))
+                    stpapi.put.field("whinh2202m000", "item",str$("54-99-14158-064G"))
+                    stpapi.put.field("whinh2202m000", "shipto.code", str$("Q11"))
+                    stpapi.put.field("whinh2202m000", "shipto.loca", "")
+                    |stpapi.put.field("whinh2202m000", "delivery.date", str$("2024-05-24 08:00:00.000"))
+                    |stpapi.put.field("whinh2202m000", "receipt.date", str$("2024-05-24 08:00:00.000"))
+                    stpapi.put.field("whinh2202m000", "series", str$("WCG"))
+                    stpapi.put.field("whinh2202m000", "order.type", str$("W01"))
+                    stpapi.put.field("whinh2202m000", "order.ref", str$("refer"))
+
+
+                |retval = stpapi.insert( "whinh2202m000", 1, o.error )
+
+                |stpapi.end.session("whinh2202m000", o.error)
+         
+                |return(o.error)
+
+                    stpapi.set.report("whinh2202m000", "rwhinh220211000", pr.device, error.msg)
+                	if not isspace(error.msg) then
+                                return(error.msg)
+                	endif
+                    stpapi.form.command("whinh2202m000", 5, "exec.cont.process", form2.msg)
+                	if not isspace(form2.msg) then
+                                return(form2.msg)
+                	endif
+					stpapi.get.field("whinh2202m000", "order.number", orno,11)
+					stpapi.end.session("whinh2202m000", error.msg) 
+
+					return(orno)
+
+	
+}

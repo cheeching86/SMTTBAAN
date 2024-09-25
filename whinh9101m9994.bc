@@ -1,0 +1,163 @@
+|******************************************************************************
+|* ttcmcs122dll999  0  VRC B61O a  ext 
+|* RTS Warehouse Order
+|* JH Chen
+|* Jul 7 24 [18:08]
+|******************************************************************************
+|* Script Type: General Library
+|******************************************************************************
+
+table	twhinh200 
+table	ttisfc001 
+
+#include <bic_dal2>
+#include <bic_dam>
+
+#pragma used dll ottstpapihand
+#pragma used dll ottdllbw
+
+function extern string warehouse_order(
+	domain tcrefa  prod_no,
+	domain tcitem i_item, 
+	long i_qty,
+	domain tccshp i_shipfrom.code, 
+	domain tcseri i_series
+	)
+{
+                DllUsage
+                Expl      : AFS to transfer WMS warehouse issue into InforLN Warehouse Order (MTR) 
+                Pre       : NA
+                Post      : NA
+                Input     :i_kitlist -> Input from CIG WMS inbound order
+                           i_item -> RTS Item
+						   i_qty -> RTS Qty
+                Output :
+                                o.error -> Error Msg
+
+                Return  : Warehouse Order Running Number 
+                EndDllUsage
+               
+                string	pr.device(8),orno(10) ,ship_to(10)
+				domain tcmcs.str100 o.error
+				long	 ret,int_pddt
+
+                o.error = "Test"
+    			pr.device = "D"
+               
+				
+				| *******Easy Entry Warehousing Order******* |
+
+				if isspace(prod_no) then
+ 					return("No Production Order Found")
+				else
+
+					select whinh200.orno,whinh200.pddt
+					from whinh200
+					where whinh200.refe = :prod_no
+					and whinh200.seri = :i_series
+					and whinh200.sfco = :i_shipfrom.code
+					selectdo
+						orno = trim$(whinh200.orno)
+						int_pddt = whinh200.pddt
+					selectempty
+						orno = ""
+						int_pddt = 0
+					endselect
+
+					select tisfc001.line.no
+					from tisfc001
+					where tisfc001.pdno = :prod_no
+					selectdo
+						ship_to = trim$(tisfc001.line.no)
+					selectempty
+						return("Production Order's Warehouse not exist!")
+					endselect
+
+					
+					stpapi.form.command("whinh2100m000", 5, "start.easy.order.entry", o.error)
+					
+					if not isspace(o.error) then
+						return(o.error)
+					else
+						
+						
+						stpapi.put.field("whinh2202m000", "order.number", orno)
+						stpapi.put.field("whinh2202m000", "order.origin", str$(72))
+						stpapi.put.field("whinh2202m000", "item.segment.1", "         ")
+						stpapi.put.field("whinh2202m000", "item.segment.2",str$(i_item))
+						stpapi.put.field("whinh2202m000", "qty.storage.unit", str$(i_qty))
+						stpapi.put.field("whinh2202m000", "shipfrom.code", str$(i_shipfrom.code))
+						stpapi.put.field("whinh2202m000", "item",str$(i_item))
+						stpapi.put.field("whinh2202m000", "shipto.code", str$(ship_to))
+					    stpapi.put.field("whinh2202m000", "shipto.loca", "")
+						stpapi.put.field("whinh2202m000", "series", str$(i_series))	
+						| if i_date > 0 then 		
+						| stpapi.put.field("whinh2202m000", "delivery.date", str$(i_date))
+						| stpapi.put.field("whinh2202m000", "receipt.date", str$(i_date))
+						| endif
+						if int_pddt > 0 then 		
+							stpapi.put.field("whinh2202m000", "delivery.date", str$(int_pddt))
+							stpapi.put.field("whinh2202m000", "receipt.date", str$(int_pddt))
+						endif
+						stpapi.put.field("whinh2202m000", "order.type", str$("W01"))
+						stpapi.put.field("whinh2202m000", "order.ref", prod_no)
+						stpapi.put.field("whinh2202m000", "ord.line.ref", prod_no)
+						stpapi.set.report("whinh2202m000", "rwhinh220211000", pr.device, o.error)
+						if not isspace(o.error) then
+							return(o.error)
+						else
+							stpapi.form.command("whinh2202m000", 5, "exec.cont.process", o.error)
+							if not isspace(o.error) then
+							return(o.error)
+							else
+								| stpapi.get.field("whinh2202m000","whinh200.orno",o.error)
+								stpapi.end.session("whinh2202m000",o.error)
+								stpapi.end.session("whinh2100m000",o.error)
+								if not isspace(o.error) then
+								return(o.error)
+								else
+
+									| count = 0
+
+									select ticst001.pdno
+									from ticst001 for update
+									where ticst001.pdno = :prod_no and ticst001.sitm = :i_item and ticst001.cwar <> :ship_to
+									selectdo
+										ret = dal.change.object("ticst001")
+										dal.set.field("ticst001.cwar", ship_to )
+										| set = dal.save.object("ticst001")
+										ret = dal.save.object("ticst001")
+										commit.transaction()
+										if ret <> 0 then       
+											abort.transaction()
+											dal.get.error.message(o.error)
+											return(o.error)
+										endif	
+										| if set = 0 then
+										| 	count = count + 1
+										| endif		
+									endselect
+
+									
+									select whinh200.orno
+									from whinh200
+									where whinh200.refe = :prod_no
+									and whinh200.seri = :i_series
+									and whinh200.sfco = :i_shipfrom.code
+									group by whinh200.orno
+									selectdo
+										o.error = whinh200.orno
+									selectempty
+										o.error = "No return! Please call InforLN Supportor"
+									endselect
+
+									
+
+								endif
+							endif
+						endif
+					endif
+				endif
+		return(o.error)
+
+}

@@ -1,0 +1,738 @@
+
+#include <bic_dam>
+#pragma used dll "ottdllbw"
+#pragma	used dll ottstpapihand	| Baan API Handler
+#include <bic_desktop>
+#include <bic_cmf>
+
+
+	table	tcprrp010 | Plan Inventory Movement
+	table	tcprmp930 | Demand and Supply
+	table	ttccom100 | Business Partner
+	table	ttcmcs060 | Manufacturer
+	table	tcprrp100 | Planned Order
+	table	tcprao020 | PO Reschedule
+	table	tcprmp420 | Plan Periods
+	table	ttcibd001 | Item General
+	table	ttcibd200 | Item Ordering
+	table	twhwmd215 | Warehouse Inventory
+	table	ttcmcs003 | Warehouses
+	table	ttdipu001 | Item Purchase
+	table	ttdipu010 | Item Purchase - BP
+	table	ttccom001 | Emlloyees Data
+	table	ttdipu045 | Manufacturer PArt Number
+	table	ttdipu048 | Manufacturer PArt Number - BP
+	table	twhinp100 | Planned Transaction
+	table	tcprpd400 | Scenario Master
+	table	ttdpur401 | Purchase Order Line
+
+
+	extern	domain	tcplnc		plnc.f
+	extern	domain	tcquan		sum.quan
+	extern	domain	tcquan		tmp.qana
+	extern	domain	tcquan		tmp.demand
+	extern	domain	tcquan		tmp.supply
+	extern	domain	tcorno		tmp.orno
+	extern	domain	tcpono		tmp.pono
+	extern	domain	tcpono		tmp.ponb
+	extern	domain	cpcom.date	tmp.sdat
+	extern	domain	cpcom.date	tmp.date.u
+	extern	domain	cpcom.date	tmp.date.l
+
+
+
+|****************************** choice section ********************************
+
+| choice.cont.process:
+| on.choice:
+| 	gen.dns.lst()
+
+
+|****************************** function section ******************************
+
+|functions:
+
+| function gen.dns.lst()
+| {
+| 	select cprpd400.plsd
+| 	from cprpd400
+| 	where cprpd400._index1 = {:plnc.f}
+| 	selectdo
+| 		tmp.sdat = cprpd400.plsd
+
+| 		drop.old.dns.lst()
+| 		gen.new.itm.lst()
+| 		upd.wek.demand()
+| 		upl.nopln.itm()
+| 	selectempty
+| 		message("Scenario no found")
+| 		tmp.sdat = 0
+| 	endselect
+
+| }
+
+
+| function drop.old.dns.lst()
+| {
+| 	db.retry.point()
+
+| 	select cprmp930.*
+| 	from cprmp930 for update
+| 	selectdo
+| 		dal.destroy.object("cprmp930")
+| 	endselect
+
+| 	commit.transaction()
+| }
+
+
+function extern string gen.new.itm.lst()
+{
+|	db.retry.point()
+	return (str$($tckitm.purchase))
+	| select tcibd001.item, tcibd001.dsca, tcibd001.citg
+	| from tcibd001
+	| where tcibd001._index6 = tckitm.purchase
+	| selectdo
+	| 	cprmp930.plni = "   " & tcibd001.item
+	| 	cprmp930.sdat = tmp.sdat + (14 * 24 * 60 * 60)
+	| 	cprmp930.dsca = tcibd001.dsca
+	| 	cprmp930.citg = tcibd001.citg
+
+	| 	select cprrp010.plni
+	| 	from cprrp010
+	| 	where cprrp010._index2 = {:plnc.f, "   " & :tcibd001.item}
+	| 	and cprrp010.kotr = tckotr.requirement
+	| 	as set with 1 rows
+	| 	selectdo
+	| 		|insert.new.item()
+	| 	selectempty
+	| 		select whinp100.item
+	| 		from whinp100
+	| 		where whinp100._index2 = {:tcibd001.item}
+	| 		as set with 1 rows
+	| 		selectdo
+	| 			insert.new.item()
+	| 		selectempty
+	| 		endselect
+	| 	endselect
+	| selectempty
+	| 	cprmp930.plni = ""
+	| 	cprmp930.sdat = 0
+	| 	cprmp930.dsca = ""
+	| 	cprmp930.citg = ""
+	| endselect
+}
+
+| function insert.new.item()
+| {
+| 	select tdipu001.buyr, tdipu001.suti, tdipu001.otbp
+| 	from tdipu001
+| 	where tdipu001._index1 = {:tcibd001.item}
+| 	selectdo
+| 		cprmp930.emno = tdipu001.buyr
+| 		cprmp930.suti = tdipu001.suti
+| 		cprmp930.bpid = tdipu001.otbp
+
+| 		select tccom001.nama
+| 		from tccom001
+| 		where tccom001._index1 = {:tdipu001.buyr}
+| 		selectdo
+| 			cprmp930.name = tccom001.nama
+| 		selectempty
+| 			cprmp930.name = ""
+| 		endselect
+| 	selectempty
+| 		cprmp930.emno = ""
+| 		cprmp930.name = ""
+| 		cprmp930.suti = 0
+| 	endselect
+
+| 	select tcibd200.oqmf, tcibd200.mioq
+| 	from tcibd200
+| 	where tcibd200._index1 = {:tcibd001.item}
+| 	selectdo
+| 		cprmp930.qimf = tcibd200.oqmf
+| 		cprmp930.qimi = tcibd200.mioq
+| 	selectempty
+| 		cprmp930.qimf = 0
+| 		cprmp930.qimi = 0
+| 	endselect
+
+| 	cprmp930.qhnd = 0
+
+| 	select whwmd215.qhnd, whwmd215.cwar
+| 	from whwmd215
+| 	where whwmd215._index2 = {:tcibd001.item}
+| 	selectdo
+| 		select tcmcs003.cwar
+| 		from tcmcs003
+| 		where tcmcs003._index1 = {:whwmd215.cwar}
+| 		and tcmcs003.inep = tcyesno.yes
+| 		selectdo
+| 		cprmp930.qhnd = cprmp930.qhnd + whwmd215.qhnd
+| 		selectempty
+| 		endselect
+| 	selectempty
+| 	endselect
+
+| 	select tdipu010.suti, tdipu010.otbp, tdipu010.qimf, tdipu010.qimi
+| 	from tdipu010
+| 	where tdipu010.item = :tcibd001.item
+| 	and tdipu010.ibps = tdipu.ibps.approved
+| 	order by tdipu010.suti, tdipu010.otbp desc
+| 	selectdo
+| 		cprmp930.bpid = tdipu010.otbp
+| 		cprmp930.suti = tdipu010.suti
+| 		cprmp930.qimf = tdipu010.qimf
+| 		cprmp930.qimi = tdipu010.qimi
+| 	selectempty
+| 		cprmp930.bpid = ""
+| 	endselect
+
+| 	select tccom100.nama
+| 	from tccom100
+| 	where tccom100._index1 = {:tdipu010.otbp}
+| 	selectdo
+| 		cprmp930.nama = tccom100.nama
+| 	selectempty
+| 		cprmp930.nama = ""
+| 	endselect
+
+| 	select tdipu045.mpnr, tdipu045.cmnf
+| 	from tdipu045
+| 	where tdipu045._index3 = {:tcibd001.item}
+| 	and tdipu045.stat = 1
+| 	selectdo
+| 		cprmp930.mpnr = tdipu045.mpnr
+| 		cprmp930.cmnf = tdipu045.cmnf
+| 	selectempty
+| 		cprmp930.mpnr = ""
+| 		cprmp930.cmnf = ""
+| 	endselect
+
+| 	select tdipu048.mpnr, tdipu048.cmnf
+| 	from tdipu048
+| 	where tdipu048._index1 = {:tcibd001.item, :cprmp930.bpid}
+| 	and tdipu048.pmpn = tcyesno.yes
+| 	selectdo
+| 		cprmp930.mpnr = tdipu048.mpnr
+| 		cprmp930.cmnf = tdipu048.cmnf
+| 	selectempty
+| 	endselect
+
+| 	select tcmcs060.dsca
+| 	from tcmcs060
+| 	where tcmcs060._index1 = {:cprmp930.cmnf}
+| 	selectdo
+| 		cprmp930.mnfn = tcmcs060.dsca
+| 	selectempty
+| 		cprmp930.mnfn = ""
+| 	endselect
+
+| 	select sum(whinp100.qana):tmp.qana
+| 	from whinp100
+| 	where whinp100._index1 = {tckoor.act.pur}
+| 	and whinp100._index2 = {:tcibd001.item}
+| 	selectdo
+| 		cprmp930.qopo = tmp.qana
+| 	selectempty
+| 		cprmp930.qopo = 0
+| 	endselect
+
+| 	cprmp930.dm01 = 0
+| 	cprmp930.dm02 = 0
+| 	cprmp930.dm03 = 0
+| 	cprmp930.dm04 = 0
+| 	cprmp930.dm05 = 0
+| 	cprmp930.dm06 = 0
+| 	cprmp930.dm07 = 0
+| 	cprmp930.dm08 = 0
+| 	cprmp930.dm09 = 0
+| 	cprmp930.dm10 = 0
+| 	cprmp930.dm11 = 0
+| 	cprmp930.dm12 = 0
+| 	cprmp930.dm13 = 0
+| 	cprmp930.dm14 = 0
+| 	cprmp930.dm15 = 0
+| 	cprmp930.dm16 = 0
+| 	cprmp930.dm17 = 0
+| 	cprmp930.dm18 = 0
+| 	cprmp930.dm19 = 0
+| 	cprmp930.dm20 = 0
+| 	cprmp930.dm21 = 0
+| 	cprmp930.dm22 = 0
+| 	cprmp930.dm23 = 0
+| 	cprmp930.dm24 = 0
+| 	cprmp930.dm25 = 0
+| 	cprmp930.dm26 = 0
+| 	cprmp930.dm27 = 0
+| 	cprmp930.dm28 = 0
+| 	cprmp930.dm29 = 0
+| 	cprmp930.dm30 = 0
+| 	cprmp930.dm31 = 0
+| 	cprmp930.dm32 = 0
+| 	cprmp930.dm33 = 0
+| 	cprmp930.dm34 = 0
+| 	cprmp930.dm35 = 0
+| 	cprmp930.dm36 = 0
+| 	cprmp930.dm37 = 0
+| 	cprmp930.dm38 = 0
+| 	cprmp930.dm39 = 0
+| 	cprmp930.dm40 = 0
+| 	cprmp930.dm41 = 0
+| 	cprmp930.dm42 = 0
+| 	cprmp930.dm43 = 0
+| 	cprmp930.dm44 = 0
+| 	cprmp930.dm45 = 0
+| 	cprmp930.dm46 = 0
+| 	cprmp930.dm47 = 0
+| 	cprmp930.dm48 = 0
+| 	cprmp930.dm49 = 0
+| 	cprmp930.dm50 = 0
+| 	cprmp930.dm51 = 0
+| 	cprmp930.dm52 = 0
+| 	cprmp930.dm53 = 0
+| 	cprmp930.dm54 = 0
+| 	cprmp930.dm55 = 0
+| 	cprmp930.dm56 = 0
+| 	cprmp930.dm57 = 0
+| 	cprmp930.dm58 = 0
+| 	cprmp930.dm59 = 0
+| 	cprmp930.dm60 = 0
+| 	cprmp930.sp01 = 0
+| 	cprmp930.sp02 = 0
+| 	cprmp930.sp03 = 0
+| 	cprmp930.sp04 = 0
+| 	cprmp930.sp05 = 0
+| 	cprmp930.sp06 = 0
+| 	cprmp930.sp07 = 0
+| 	cprmp930.sp08 = 0
+| 	cprmp930.sp09 = 0
+| 	cprmp930.sp10 = 0
+| 	cprmp930.sp11 = 0
+| 	cprmp930.sp12 = 0
+| 	cprmp930.sp13 = 0
+| 	cprmp930.sp14 = 0
+| 	cprmp930.sp15 = 0
+| 	cprmp930.sp16 = 0
+| 	cprmp930.sp17 = 0
+| 	cprmp930.sp18 = 0
+| 	cprmp930.sp19 = 0
+| 	cprmp930.sp20 = 0
+| 	cprmp930.sp21 = 0
+| 	cprmp930.sp22 = 0
+| 	cprmp930.sp23 = 0
+| 	cprmp930.sp24 = 0
+| 	cprmp930.sp25 = 0
+| 	cprmp930.sp26 = 0
+| 	cprmp930.sp27 = 0
+| 	cprmp930.sp28 = 0
+| 	cprmp930.sp29 = 0
+| 	cprmp930.sp30 = 0
+| 	cprmp930.sp31 = 0
+| 	cprmp930.sp32 = 0
+| 	cprmp930.sp33 = 0
+| 	cprmp930.sp34 = 0
+| 	cprmp930.sp35 = 0
+| 	cprmp930.sp36 = 0
+| 	cprmp930.sp37 = 0
+| 	cprmp930.sp38 = 0
+| 	cprmp930.sp39 = 0
+| 	cprmp930.sp40 = 0
+| 	cprmp930.sp41 = 0
+| 	cprmp930.sp42 = 0
+| 	cprmp930.sp43 = 0
+| 	cprmp930.sp44 = 0
+| 	cprmp930.sp45 = 0
+| 	cprmp930.sp46 = 0
+| 	cprmp930.sp47 = 0
+| 	cprmp930.sp48 = 0
+| 	cprmp930.sp49 = 0
+| 	cprmp930.sp50 = 0
+| 	cprmp930.sp51 = 0
+| 	cprmp930.sp52 = 0
+| 	cprmp930.sp53 = 0
+| 	cprmp930.sp54 = 0
+| 	cprmp930.sp55 = 0
+| 	cprmp930.sp56 = 0
+| 	cprmp930.sp57 = 0
+| 	cprmp930.sp58 = 0
+| 	cprmp930.sp59 = 0
+| 	cprmp930.sp60 = 0
+
+| 	db.insert(tcprmp930, db.retry)
+| 	commit.transaction()	
+| }
+
+| function upd.wek.demand()
+| {
+| 	db.retry.point()
+
+| 	select cprmp930.*
+| 	from cprmp930 for update
+| 	selectdo
+| 		cprmp930.dm01 = cnt.wek.demand(-1) + cnt.wek.demand(00) + cnt.wek.demand(01)
+| 		cprmp930.dm02 = cnt.wek.demand(02)
+| 		cprmp930.dm03 = cnt.wek.demand(03)
+| 		cprmp930.dm04 = cnt.wek.demand(04)
+| 		cprmp930.dm05 = cnt.wek.demand(05)
+| 		cprmp930.dm06 = cnt.wek.demand(06)
+| 		cprmp930.dm07 = cnt.wek.demand(07)
+| 		cprmp930.dm08 = cnt.wek.demand(08)
+| 		cprmp930.dm09 = cnt.wek.demand(09)
+| 		cprmp930.dm10 = cnt.wek.demand(10)
+| 		cprmp930.dm11 = cnt.wek.demand(11)
+| 		cprmp930.dm12 = cnt.wek.demand(12)
+| 		cprmp930.dm13 = cnt.wek.demand(13)
+| 		cprmp930.dm14 = cnt.wek.demand(14)
+| 		cprmp930.dm15 = cnt.wek.demand(15)
+| 		cprmp930.dm16 = cnt.wek.demand(16)
+| 		cprmp930.dm17 = cnt.wek.demand(17)
+| 		cprmp930.dm18 = cnt.wek.demand(18)
+| 		cprmp930.dm19 = cnt.wek.demand(19)
+| 		cprmp930.dm20 = cnt.wek.demand(20)
+| 		cprmp930.dm21 = cnt.wek.demand(21)
+| 		cprmp930.dm22 = cnt.wek.demand(22)
+| 		cprmp930.dm23 = cnt.wek.demand(23)
+| 		cprmp930.dm24 = cnt.wek.demand(24)
+| 		cprmp930.dm25 = cnt.wek.demand(25)
+| 		cprmp930.dm26 = cnt.wek.demand(26)
+| 		cprmp930.dm27 = cnt.wek.demand(27)
+| 		cprmp930.dm28 = cnt.wek.demand(28)
+| 		cprmp930.dm29 = cnt.wek.demand(29)
+| 		cprmp930.dm30 = cnt.wek.demand(30)
+| 		cprmp930.dm31 = cnt.wek.demand(31)
+| 		cprmp930.dm32 = cnt.wek.demand(32)
+| 		cprmp930.dm33 = cnt.wek.demand(33)
+| 		cprmp930.dm34 = cnt.wek.demand(34)
+| 		cprmp930.dm35 = cnt.wek.demand(35)
+| 		cprmp930.dm36 = cnt.wek.demand(36)
+| 		cprmp930.dm37 = cnt.wek.demand(37)
+| 		cprmp930.dm38 = cnt.wek.demand(38)
+| 		cprmp930.dm39 = cnt.wek.demand(39)
+| 		cprmp930.dm40 = cnt.wek.demand(40)
+| 		cprmp930.dm41 = cnt.wek.demand(41)
+| 		cprmp930.dm42 = cnt.wek.demand(42)
+| 		cprmp930.dm43 = cnt.wek.demand(43)
+| 		cprmp930.dm44 = cnt.wek.demand(44)
+| 		cprmp930.dm45 = cnt.wek.demand(45)
+| 		cprmp930.dm46 = cnt.wek.demand(46)
+| 		cprmp930.dm47 = cnt.wek.demand(47)
+| 		cprmp930.dm48 = cnt.wek.demand(48)
+| 		cprmp930.dm49 = cnt.wek.demand(49)
+| 		cprmp930.dm50 = cnt.wek.demand(50)
+| 		cprmp930.dm51 = cnt.wek.demand(51)
+| 		cprmp930.dm52 = cnt.wek.demand(52)
+| 		cprmp930.dm53 = cnt.wek.demand(53)
+| 		cprmp930.dm54 = cnt.wek.demand(54)
+| 		cprmp930.dm55 = cnt.wek.demand(55)
+| 		cprmp930.dm56 = cnt.wek.demand(56)
+| 		cprmp930.dm57 = cnt.wek.demand(57)
+| 		cprmp930.dm58 = cnt.wek.demand(58)
+| 		cprmp930.dm59 = cnt.wek.demand(59)
+| 		cprmp930.dm60 = cnt.wek.demand(60)
+
+| 		cprmp930.sp01 = cnt.wek.supply(-1) + cnt.wek.supply(00) + cnt.wek.supply(01)
+| 		cprmp930.sp02 = cnt.wek.supply(02)
+| 		cprmp930.sp03 = cnt.wek.supply(03)
+| 		cprmp930.sp04 = cnt.wek.supply(04)
+| 		cprmp930.sp05 = cnt.wek.supply(05)
+| 		cprmp930.sp06 = cnt.wek.supply(06)
+| 		cprmp930.sp07 = cnt.wek.supply(07)
+| 		cprmp930.sp08 = cnt.wek.supply(08)
+| 		cprmp930.sp09 = cnt.wek.supply(09)
+| 		cprmp930.sp10 = cnt.wek.supply(10)
+| 		cprmp930.sp11 = cnt.wek.supply(11)
+| 		cprmp930.sp12 = cnt.wek.supply(12)
+| 		cprmp930.sp13 = cnt.wek.supply(13)
+| 		cprmp930.sp14 = cnt.wek.supply(14)
+| 		cprmp930.sp15 = cnt.wek.supply(15)
+| 		cprmp930.sp16 = cnt.wek.supply(16)
+| 		cprmp930.sp17 = cnt.wek.supply(17)
+| 		cprmp930.sp18 = cnt.wek.supply(18)
+| 		cprmp930.sp19 = cnt.wek.supply(19)
+| 		cprmp930.sp20 = cnt.wek.supply(20)
+| 		cprmp930.sp21 = cnt.wek.supply(21)
+| 		cprmp930.sp22 = cnt.wek.supply(22)
+| 		cprmp930.sp23 = cnt.wek.supply(23)
+| 		cprmp930.sp24 = cnt.wek.supply(24)
+| 		cprmp930.sp25 = cnt.wek.supply(25)
+| 		cprmp930.sp26 = cnt.wek.supply(26)
+| 		cprmp930.sp27 = cnt.wek.supply(27)
+| 		cprmp930.sp28 = cnt.wek.supply(28)
+| 		cprmp930.sp29 = cnt.wek.supply(29)
+| 		cprmp930.sp30 = cnt.wek.supply(30)
+| 		cprmp930.sp31 = cnt.wek.supply(31)
+| 		cprmp930.sp32 = cnt.wek.supply(32)
+| 		cprmp930.sp33 = cnt.wek.supply(33)
+| 		cprmp930.sp34 = cnt.wek.supply(34)
+| 		cprmp930.sp35 = cnt.wek.supply(35)
+| 		cprmp930.sp36 = cnt.wek.supply(36)
+| 		cprmp930.sp37 = cnt.wek.supply(37)
+| 		cprmp930.sp38 = cnt.wek.supply(38)
+| 		cprmp930.sp39 = cnt.wek.supply(39)
+| 		cprmp930.sp40 = cnt.wek.supply(40)
+| 		cprmp930.sp41 = cnt.wek.supply(41)
+| 		cprmp930.sp42 = cnt.wek.supply(42)
+| 		cprmp930.sp43 = cnt.wek.supply(43)
+| 		cprmp930.sp44 = cnt.wek.supply(44)
+| 		cprmp930.sp45 = cnt.wek.supply(45)
+| 		cprmp930.sp46 = cnt.wek.supply(46)
+| 		cprmp930.sp47 = cnt.wek.supply(47)
+| 		cprmp930.sp48 = cnt.wek.supply(48)
+| 		cprmp930.sp49 = cnt.wek.supply(49)
+| 		cprmp930.sp50 = cnt.wek.supply(50)
+| 		cprmp930.sp51 = cnt.wek.supply(51)
+| 		cprmp930.sp52 = cnt.wek.supply(52)
+| 		cprmp930.sp53 = cnt.wek.supply(53)
+| 		cprmp930.sp54 = cnt.wek.supply(54)
+| 		cprmp930.sp55 = cnt.wek.supply(55)
+| 		cprmp930.sp56 = cnt.wek.supply(56)
+| 		cprmp930.sp57 = cnt.wek.supply(57)
+| 		cprmp930.sp58 = cnt.wek.supply(58)
+| 		cprmp930.sp59 = cnt.wek.supply(59)
+| 		cprmp930.sp60 = cnt.wek.supply(60)
+
+| 		db.update(tcprmp930, db.retry)
+| 		commit.transaction()
+| 	selectempty
+| 	endselect
+
+| 	commit.transaction()
+| }
+
+| function domain tcquan cnt.wek.demand(long i)
+| {
+| 	tmp.demand = 0
+| 	tmp.date.u = cprmp930.sdat + (i * 7 * 24 * 60 * 60)
+| 	if i >= 0 then
+| 		tmp.date.l = cprmp930.sdat + ((i-1) * 7 * 24 * 60 * 60)
+| 	else
+| 		tmp.date.l = 1
+
+| 	endif
+
+| 	|Planned Issue as demand (MRP Result).
+| 	select cprrp010.qana
+| 	from cprrp010
+| 	where cprrp010._index2 = {:plnc.f, :cprmp930.plni}
+| 	and cprrp010.kotr = tckotr.requirement
+| 	and cprrp010.date < :tmp.date.u
+| 	and cprrp010.date >= :tmp.date.l
+| 	selectdo
+| 		tmp.demand = tmp.demand + cprrp010.qana
+| 	selectempty
+| 	endselect
+
+| 	|Schedule Issue from nettable warehouse as demand (created order exclude warehouse transfer order)
+| 	select whinp100.cwar, whinp100.qana
+| 	from whinp100
+| 	where whinp100._index1 <> {tckoor.act.trf.man}
+| 	and whinp100._index2 = {:cprmp930.plni(4;47)}
+| 	and whinp100.kotr = tckotr.requirement
+| 	and whinp100.date < :tmp.date.u
+| 	and whinp100.date >= :tmp.date.l
+| 	selectdo
+| 		select tcmcs003.cwar
+| 		from tcmcs003
+| 		where tcmcs003._index1 = {:whinp100.cwar}
+| 		and tcmcs003.inep = tcyesno.no
+| 		selectdo
+| 			tmp.demand = tmp.demand
+| 		selectempty
+| 			tmp.demand = tmp.demand + whinp100.qana
+| 		endselect	
+| 	selectempty
+| 	endselect
+
+| 	|Schedule Issue (created warehouse transfer order) to non-netetable warehouse as demand
+| 	select whinp100.orno, whinp100.pono, whinp100.ponb, whinp100.cwar, whinp100.qana
+| 	from whinp100
+| 	where whinp100._index1 = {tckoor.act.trf.man}
+| 	and whinp100._index2 = {:cprmp930.plni(4;47)}
+| 	and whinp100.kotr = tckotr.requirement
+| 	and whinp100.date < :tmp.date.u
+| 	and whinp100.date >= :tmp.date.l
+| 	selectdo
+| 		tmp.orno = whinp100.orno
+| 		tmp.pono = whinp100.pono
+| 		tmp.ponb = whinp100.ponb
+
+| 		select tcmcs003.cwar
+| 		from tcmcs003
+| 		where tcmcs003._index1 = {:whinp100.cwar}
+| 		and tcmcs003.inep = tcyesno.yes
+| 		selectdo
+| 			select whinp100.cwar, whinp100.qana
+| 			from whinp100
+| 			where whinp100._index1 = {tckoor.act.trf.man}
+| 			and whinp100._index2 = {:cprmp930.plni(4;47)}
+| 			and whinp100.kotr = tckotr.receipt
+| 			and whinp100.orno = :tmp.orno
+| 			and whinp100.pono = :tmp.pono
+| 			and whinp100.ponb = :tmp.ponb
+| 			selectdo
+| 				select tcmcs003.cwar
+| 				from tcmcs003
+| 				where tcmcs003._index1 = {:whinp100.cwar}
+| 				and tcmcs003.inep = tcyesno.no
+| 				selectdo
+| 					tmp.demand = tmp.demand + whinp100.qana
+| 				selectempty
+| 					tmp.demand = tmp.demand
+| 				endselect
+| 			selectempty
+| 				tmp.demand = tmp.demand
+| 			endselect
+| 		selectempty
+| 			tmp.demand = tmp.demand
+| 		endselect
+| 	selectempty
+| 	endselect
+
+| 	return(tmp.demand)
+| }
+
+
+| function domain tcquan cnt.wek.supply(long i)
+| {
+| 	tmp.supply = 0
+| 	tmp.date.u = cprmp930.sdat + (i * 7 * 24 * 60 * 60)
+| 	if i >= 0 then
+| 		tmp.date.l = cprmp930.sdat + ((i-1) * 7 * 24 * 60 * 60)
+| 	else
+| 		tmp.date.l = 1
+
+| 	endif
+
+| 	|Count receive with filter out not nettable receive
+| 	select whinp100.cwar, whinp100.qana
+| 	from whinp100
+| 	where whinp100._index1 <> {tckoor.act.trf.man}
+| 	and whinp100._index2 = {:cprmp930.plni(4;47)}
+| 	and whinp100.kotr = tckotr.receipt
+| 	and whinp100.date < :tmp.date.u
+| 	and whinp100.date >= :tmp.date.l
+| 	selectdo
+| 		select tcmcs003.cwar
+| 		from tcmcs003
+| 		where tcmcs003._index1 = {:whinp100.cwar}
+| 		and tcmcs003.inep = tcyesno.yes
+| 		selectdo
+| 			tmp.supply = tmp.supply + whinp100.qana
+| 		selectempty
+| 			tmp.supply = tmp.supply
+| 		endselect
+| 	selectempty
+| 	endselect
+
+| 	|Schedule Receive (created warehouse transfer order) from non-netetable warehouse as supply
+| 	select whinp100.orno, whinp100.pono, whinp100.ponb, whinp100.cwar, whinp100.qana
+| 	from whinp100
+| 	where whinp100._index1 = {tckoor.act.trf.man}
+| 	and whinp100._index2 = {:cprmp930.plni(4;47)}
+| 	and whinp100.kotr = tckotr.receipt
+| 	and whinp100.date < :tmp.date.u
+| 	and whinp100.date >= :tmp.date.l
+| 	selectdo
+| 		tmp.orno = whinp100.orno
+| 		tmp.pono = whinp100.pono
+| 		tmp.ponb = whinp100.ponb
+
+| 		select tcmcs003.cwar
+| 		from tcmcs003
+| 		where tcmcs003._index1 = {:whinp100.cwar}
+| 		and tcmcs003.inep = tcyesno.yes
+| 		selectdo
+| 			select whinp100.cwar, whinp100.qana
+| 			from whinp100
+| 			where whinp100._index1 = {tckoor.act.trf.man}
+| 			and whinp100._index2 = {:cprmp930.plni(4;47)}
+| 			and whinp100.kotr = tckotr.requirement
+| 			and whinp100.orno = :tmp.orno
+| 			and whinp100.pono = :tmp.pono
+| 			and whinp100.ponb = :tmp.ponb
+| 			selectdo
+| 				select tcmcs003.cwar
+| 				from tcmcs003
+| 				where tcmcs003._index1 = {:whinp100.cwar}
+| 				and tcmcs003.inep = tcyesno.no
+| 				selectdo
+| 					tmp.supply = tmp.supply + whinp100.qana
+| 				selectempty
+| 					tmp.supply = tmp.supply
+| 				endselect
+| 			selectempty
+| 				tmp.supply = tmp.supply
+| 			endselect
+| 		selectempty
+| 			tmp.supply = tmp.supply
+| 		endselect
+| 	selectempty
+| 	endselect
+
+| 	|Exclude Purchase Order confirmed received date = 0
+| 	select whinp100.orno, whinp100.pono, whinp100.ponb, whinp100.qana
+| 	from whinp100
+| 	where whinp100._index1 = tckoor.act.pur
+| 	and whinp100._index2 = {:cprmp930.plni(4;47)}
+| 	and whinp100.kotr = tckotr.receipt
+| 	and whinp100.date < :tmp.date.u
+| 	and whinp100.date >= :tmp.date.l
+| 	selectdo
+| 		select tdpur401.ddtc
+| 		from tdpur401
+| 		where tdpur401._index1 = {:whinp100.orno, :whinp100.pono, :whinp100.ponb}
+| 		and tdpur401.ddtc = 0
+| 		selectdo
+| 			tmp.supply = tmp.supply - whinp100.qana
+| 		selectempty
+| 		endselect
+| 	selectempty
+| 	endselect
+
+| 	|Exclude Non approved Purchase Order
+| 	select whinp100.orno, whinp100.pono, whinp100.ponb, whinp100.qana
+| 	from whinp100
+| 	where whinp100._index1 = tckoor.act.pur.adv
+| 	and whinp100._index2 = {:cprmp930.plni(4;47)}
+| 	and whinp100.kotr = tckotr.receipt
+| 	and whinp100.date < :tmp.date.u
+| 	and whinp100.date >= :tmp.date.l
+| 	selectdo
+| 		tmp.supply = tmp.supply - whinp100.qana
+| 	selectempty
+| 	endselect
+
+| 	return(tmp.supply)
+| }
+
+| function upl.nopln.itm()
+| {
+| 	select tcibd001.item, tcibd001.dsca, tcibd001.citg
+| 	from tcibd001
+| 	where tcibd001._index6 = tckitm.purchase
+| 	and tcibd001.csig <> "OBS"
+| 	selectdo
+| 		select cprpd100.plni
+| 		from cprpd100
+| 		where cprpd100._index1 =  {"   " & :tcibd001.item}
+| 		selectdo
+| 			select cprmp930.plni
+| 			from cprmp930
+| 			where cprmp930._index1 = {"   " & :tcibd001.item}
+| 			selectdo
+| 			selectempty
+| 				cprmp930.plni = "   " & tcibd001.item
+| 				cprmp930.sdat = tmp.sdat + (14 * 24 * 60 * 60)
+| 				cprmp930.dsca = tcibd001.dsca
+| 				cprmp930.citg = tcibd001.citg
+
+| 				insert.new.item()
+| 			endselect
+| 		selectempty
+| 		endselect
+| 	selectempty
+| 	endselect
+| }

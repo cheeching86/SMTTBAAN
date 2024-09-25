@@ -1,0 +1,412 @@
+|******************************************************************************
+|* cprmp9240msmt  0  VRC B61C a  smt 
+|* Update Demand and Supply Details
+|* hychia
+|* 2018-08-02 [13:13]
+|* Last Modify : 08-Oct-2018
+|* Last Modify by : HY Chia
+|******************************************************************************
+|* Script Type: 123
+|******************************************************************************
+                                                                                
+|****************************** DECLARATION SECTION ***************************
+
+declaration:
+
+	#include <bic_dam>
+
+	table	tcprmp940 | Update Demand and Supply Details
+	table	tcprrp010 | Plan Inventory Movement
+	table	tcprpd100 | Planned Order
+	table	ttisfc001 | Production Order
+	table	ttcibd001 | Item General
+	table	ttcibd200 | Item Ordering
+	table	twhwmd215 | Warehouse Inventory
+	table	ttcmcs003 | Warehouses
+	table	twhinp100 | Planned Transaction
+	table	twhinh200 | Warehouse Order
+	table	tcprpd400 | Scenario Master
+	table	ttdpur401 | Purchase Order Line
+
+
+	extern	domain	tcplnc		plnc.f
+	extern	domain	tcyesno		tmp.cwar.f
+	extern	domain	tcyesno		tmp.cwar.t
+	extern	domain	tckotr		kotr.empty
+
+
+|****************************** choice section ********************************
+
+choice.cont.process:
+on.choice:
+	gen.dns.dtl()
+
+
+|****************************** function section ******************************
+
+functions:
+
+function gen.dns.dtl()
+{
+	select cprpd400.plsd
+	from cprpd400
+	where cprpd400._index1 = {:plnc.f}
+	selectdo
+		drop.old.dns.dtl()
+		gen.pln.mov()
+		gen.pln.trx.wtm()
+		gen.pln.trx.oth()
+		gen.no.pln.itm()
+	selectempty
+		message("Scenario no found")
+	endselect
+
+}
+
+
+function drop.old.dns.dtl()
+{
+	db.retry.point()
+
+	select cprmp940.*
+	from cprmp940 for update
+	where cprmp940._index1 = {:plnc.f}
+	selectdo
+		dal.destroy.object("cprmp940")
+	endselect
+
+	commit.transaction()
+}
+
+function gen.pln.mov()
+{
+	db.retry.point()
+
+	select cprrp010.*
+	from cprrp010
+	where cprrp010._index1 = {:plnc.f}
+	selectdo
+		cprmp940.plnc = plnc.f
+		cprmp940.plni = cprrp010.plni
+		cprmp940.dsca = ""
+		cprmp940.koor = cprrp010.koor
+		cprmp940.kotr = cprrp010.kotr
+		cprmp940.orno = cprrp010.orno
+		cprmp940.pono = cprrp010.lpon
+		cprmp940.sqnb = cprrp010.pono
+		cprmp940.date = cprrp010.date
+		cprmp940.qana = cprrp010.qana
+		cprmp940.mitm = cprrp010.mitm
+		cprmp940.mdsc = ""
+		cprmp940.cuni = ""
+		cprmp940.qhnd = 0
+		cprmp940.sstk = 0
+
+		select whwmd215.qhnd, whwmd215.cwar
+		from whwmd215
+		where whwmd215._index2 = {:cprmp940.plni(4;47)}
+		selectdo
+			select tcmcs003.cwar
+			from tcmcs003
+			where tcmcs003._index1 = {:whwmd215.cwar}
+			and tcmcs003.inep = tcyesno.yes
+			selectdo
+				cprmp940.qhnd = cprmp940.qhnd + whwmd215.qhnd
+			selectempty
+			endselect
+		selectempty
+		endselect
+
+		select tcibd001.dsca, tcibd001.cuni
+		from tcibd001
+		where tcibd001._index1 = {:cprmp940.plni(4;47)}
+		selectdo
+			cprmp940.dsca = tcibd001.dsca
+			cprmp940.cuni = tcibd001.cuni
+		selectempty
+		endselect
+
+		select tcibd001.dsca
+		from tcibd001
+		where tcibd001._index1 = {:cprmp940.mitm(4;47)}
+		selectdo
+			cprmp940.mdsc = tcibd001.dsca
+		selectempty
+		endselect
+
+		select tcibd200.sfst
+		from tcibd200
+		where tcibd200._index1 = {:cprmp940.plni(4;47)}
+		selectdo
+			cprmp940.sstk = tcibd200.sfst
+		selectempty
+		endselect
+
+		db.insert(tcprmp940, db.retry)
+		commit.transaction()
+	selectempty
+	endselect
+
+}
+
+
+
+function gen.pln.trx.wtm()
+{
+	db.retry.point()
+	select whinp100.*
+	from whinp100
+	where whinp100._index1 = tckoor.act.trf.man
+	selectdo
+		cprmp940.plnc = plnc.f
+		cprmp940.plni = "   " & whinp100.item
+		cprmp940.dsca = ""
+		cprmp940.koor = whinp100.koor
+		cprmp940.kotr = whinp100.kotr
+		cprmp940.orno = whinp100.orno
+		cprmp940.pono = whinp100.pono
+		cprmp940.sqnb = whinp100.ponb
+		cprmp940.date = whinp100.date
+		cprmp940.qana = whinp100.qana
+		cprmp940.mitm = ""
+		cprmp940.mdsc = ""
+		cprmp940.cuni = ""
+		cprmp940.qhnd = 0
+		cprmp940.sstk = 0
+
+		if whinp100.koor = tckoor.act.sfc then
+			select tisfc001.mitm
+			from tisfc001
+			where tisfc001._index1 = {:whinp100.orno}
+			selectdo
+				cprmp940.mitm = tisfc001.mitm
+			selectempty
+			endselect
+		endif
+
+		select whwmd215.qhnd, whwmd215.cwar
+		from whwmd215
+		where whwmd215._index2 = {:cprmp940.plni(4;47)}
+		selectdo
+			select tcmcs003.cwar
+			from tcmcs003
+			where tcmcs003._index1 = {:whwmd215.cwar}
+			and tcmcs003.inep = tcyesno.yes
+			selectdo
+				cprmp940.qhnd = cprmp940.qhnd + whwmd215.qhnd
+			selectempty
+			endselect
+		selectempty
+		endselect
+
+		select tcibd001.dsca, tcibd001.cuni
+		from tcibd001
+		where tcibd001._index1 = {:cprmp940.plni(4;47)}
+		selectdo
+			cprmp940.dsca = tcibd001.dsca
+			cprmp940.cuni = tcibd001.cuni
+		selectempty
+		endselect
+
+		select tcibd001.dsca
+		from tcibd001
+		where tcibd001._index1 = {:cprmp940.mitm(4;47)}
+		selectdo
+			cprmp940.mdsc = tcibd001.dsca
+		selectempty
+		endselect
+
+		select tcibd200.sfst
+		from tcibd200
+		where tcibd200._index1 = {:cprmp940.plni(4;47)}
+		selectdo
+			cprmp940.sstk = tcibd200.sfst
+		selectempty
+		endselect
+
+		select whinh200.*
+		from whinh200
+		where whinh200._index1 = {whinh.oorg.transfer.man, :whinp100.orno}
+		selectdo
+			select tcmcs003.inep
+			from tcmcs003
+			where tcmcs003._index1 = {:whinh200.sfco}
+			selectdo
+				tmp.cwar.f = tcmcs003.inep
+			selectempty
+			endselect
+
+			select tcmcs003.inep
+			from tcmcs003
+			where tcmcs003._index1 = {:whinh200.stco}
+			selectdo
+				tmp.cwar.t = tcmcs003.inep
+			selectempty
+			endselect
+		selectempty
+		endselect
+
+		if (tmp.cwar.f = tcyesno.yes and tmp.cwar.t = tcyesno.no and whinp100.kotr = tckotr.requirement) then
+			db.insert(tcprmp940, db.retry)
+			commit.transaction()
+		endif
+
+		if (tmp.cwar.f = tcyesno.no and tmp.cwar.t = tcyesno.yes and whinp100.kotr = tckotr.receipt) then
+			db.insert(tcprmp940, db.retry)
+			commit.transaction()
+		endif
+	selectempty
+	endselect
+}
+
+function gen.pln.trx.oth()
+{
+	db.retry.point()
+
+	select whinp100.*
+	from whinp100
+	where whinp100._index1 <> tckoor.act.trf.man
+	selectdo
+		cprmp940.plnc = plnc.f
+		cprmp940.plni = "   " & whinp100.item
+		cprmp940.dsca = ""
+		cprmp940.koor = whinp100.koor
+		cprmp940.kotr = whinp100.kotr
+		cprmp940.orno = whinp100.orno
+		cprmp940.pono = whinp100.pono
+		cprmp940.sqnb = whinp100.ponb
+		cprmp940.date = whinp100.date
+		cprmp940.qana = whinp100.qana
+		cprmp940.mitm = ""
+		cprmp940.mdsc = ""
+		cprmp940.cuni = ""
+		cprmp940.qhnd = 0
+		cprmp940.sstk = 0
+
+		if whinp100.koor = tckoor.act.pur or whinp100.koor = tckoor.act.pur.adv then
+			select tdpur401.ddtc
+			from tdpur401
+			where tdpur401._index1 = {:whinp100.orno, :whinp100.pono, :whinp100.ponb}
+			and tdpur401.ddtc > 0
+			selectdo
+				cprmp940.date = tdpur401.ddtc
+			selectempty
+				cprmp940.date = date.to.utc( 2030, 12, 31, 23, 59, 59 )
+			endselect
+		endif
+
+		if whinp100.koor = tckoor.act.sfc then
+			select tisfc001.mitm
+			from tisfc001
+			where tisfc001._index1 = {:whinp100.orno}
+			selectdo
+				if cprmp940.plni <> "   " & tisfc001.mitm then
+					cprmp940.mitm = "   " & tisfc001.mitm
+				endif
+			selectempty
+			endselect
+		endif
+
+		select whwmd215.qhnd, whwmd215.cwar
+		from whwmd215
+		where whwmd215._index2 = {:cprmp940.plni(4;47)}
+		selectdo
+			select tcmcs003.cwar
+			from tcmcs003
+			where tcmcs003._index1 = {:whwmd215.cwar}
+			and tcmcs003.inep = tcyesno.yes
+			selectdo
+				cprmp940.qhnd = cprmp940.qhnd + whwmd215.qhnd
+			selectempty
+			endselect
+		selectempty
+		endselect
+
+		select tcibd001.dsca, tcibd001.cuni
+		from tcibd001
+		where tcibd001._index1 = {:cprmp940.plni(4;47)}
+		selectdo
+			cprmp940.dsca = tcibd001.dsca
+			cprmp940.cuni = tcibd001.cuni
+		selectempty
+		endselect
+
+		select tcibd001.dsca
+		from tcibd001
+		where tcibd001._index1 = {:cprmp940.mitm(4;47)}
+		selectdo
+			cprmp940.mdsc = tcibd001.dsca
+		selectempty
+		endselect
+
+		select tcibd200.sfst
+		from tcibd200
+		where tcibd200._index1 = {:cprmp940.plni(4;47)}
+		selectdo
+			cprmp940.sstk = tcibd200.sfst
+		selectempty
+		endselect
+
+		db.insert(tcprmp940, db.retry)
+		commit.transaction()
+	selectempty
+	endselect
+}
+
+function gen.no.pln.itm()
+{
+	db.retry.point()
+
+	select tcibd001.item, tcibd001.dsca, tcibd001.cuni
+	from tcibd001
+	selectdo
+		select cprmp940.plni
+		from cprmp940
+		where cprmp940._index1 = {:plnc.f, "   " & :tcibd001.item}
+		selectdo
+		selectempty
+			cprmp940.plnc = plnc.f
+			cprmp940.plni = "   " & tcibd001.item
+			cprmp940.dsca = tcibd001.dsca
+			cprmp940.koor = tckoor.not.appl
+			cprmp940.kotr = kotr.empty
+			cprmp940.orno = ""
+			cprmp940.pono = 0
+			cprmp940.sqnb = 0
+			cprmp940.date = utc.num()
+			cprmp940.qana = 0
+			cprmp940.mitm = ""
+			cprmp940.mdsc = ""
+			cprmp940.cuni = tcibd001.cuni
+			cprmp940.qhnd = 0
+			cprmp940.sstk = 0
+
+			select whwmd215.qhnd, whwmd215.cwar
+			from whwmd215
+			where whwmd215._index2 = {:cprmp940.plni(4;47)}
+			selectdo
+				select tcmcs003.cwar
+				from tcmcs003
+				where tcmcs003._index1 = {:whwmd215.cwar}
+				and tcmcs003.inep = tcyesno.yes
+				selectdo
+					cprmp940.qhnd = cprmp940.qhnd + whwmd215.qhnd
+				selectempty
+				endselect
+			selectempty
+			endselect
+
+			select tcibd200.sfst
+			from tcibd200
+			where tcibd200._index1 = {:cprmp940.plni(4;47)}
+			selectdo
+				cprmp940.sstk = tcibd200.sfst
+			selectempty
+			endselect
+
+			db.insert(tcprmp940, db.retry)
+			commit.transaction()
+		endselect
+	selectempty
+	endselect
+}

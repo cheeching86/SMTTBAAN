@@ -1,0 +1,547 @@
+|******************************************************************************
+|* tiedm9999m000  0  VRC B61C a  cus 
+|* Import Purchase Order (Customize)
+|* Jh Chen                                                                                            
+|* 2023-11-27
+|******************************************************************************
+|* Main table tdpur410 Purchase Order Line Form
+|******************************************************************************
+                                                                                
+|****************************** declaration section ***************************
+declaration:
+#include <bic_dam>
+#include <bic_cmf>
+
+#pragma used dll "ottdllbw"
+#pragma	used dll ottstpapihand	| Baan API Handler
+#include <bic_desktop>
+
+	table   ttdpur400	| Purchase Order
+	table   ttdpur401	| Purchase Order Lines
+    table   ttcmcs012
+
+    extern  domain  tcitem          itemcode,pitem,prod_order
+    extern  domain  tccom.bpid      business_partner
+    extern  domain  tccom.cadr      business_address
+    extern	domain	tcqrd1		    qty
+    extern  domain  tcpric          price
+    extern  domain  tcdate          order_date,plan_date
+
+    long	ret5, ret6
+
+
+|****************************** program section ********************************
+before.program:
+	
+    if get.compnr() <> 903 then	| Cancel Upload data
+        message("This Function only open for company 903 to Test!")
+
+		stop()
+
+	endif
+
+	import("tdpur400.orno", prod_order)
+    import("tdpur400.sfbp", business_partner)
+    import("tdpur400.sfad", business_address)
+    import("tdpur400.odat", order_date)
+    import("tdpur400.ddat", plan_date)
+
+|****************************** group section **********************************
+
+group.1:
+init.group:
+   get.screen.defaults()
+   
+
+|****************************** functions **************************************
+Functions:
+
+ function extern upload.request()
+ {		
+ 	|****************** Upload File into Server *************************
+ 	long	ret, ret1, count, ret2, input.fp
+ 	long 	check1
+ 	string	filename2(200)
+ 	string	curr.line(2048)
+ 	domain	tcmcs.str100	filename
+ 	long 	str.no, i, pos.1
+ 	string	temp.txt(250), instr(1)
+ 	string	err.msg(200),err2.msg(200),add1.msg(200)
+    string  uset(3),cuni(3)
+
+ 	ret1 = 0
+	
+ 	filename2 = "${BSE}/tmp_import/Upload_Purchase_order.csv"
+
+	if get.ui.mode() = 1 then
+		ret2 =  client2server("", filename2, false, false,true)
+	else
+		ret2 =  client.upload.file(filename2) 
+	endif
+
+	if ret2 <> 0 then	| Cancel Upload data
+		stop()
+
+	endif
+
+      
+    | select * from tdpur401 for update
+    | where tdpur401.orno = :prod_order 
+    | selectdo
+    |     dal.destroy.object("tdpur401")
+    |     | commit.transaction()
+    | endselect
+		
+
+	temp.txt = trim$(get.local.filename())
+	str.no = len(temp.txt)
+
+	for i = 1 to str.no
+	instr = temp.txt(i;1)
+	
+	if instr = "\" then
+		pos.1 = i  
+	endif
+	endfor
+
+ 	filename = temp.txt(pos.1+1)
+	
+ 	input.fp = seq.open(strip$(filename2),"rt")
+
+ 	if input.fp < 1 then
+ 		message("File Cannot be uploaded.")
+ 		return
+
+    else
+        seq.rewind(input.fp)
+        ret1 = seq.gets(curr.line, 2048, input.fp)
+
+		while ret1 = 0
+
+            ret1 = seq.gets(curr.line, 2048, input.fp)
+                | Check the Column have more then 3 or not
+                check1 = string.scan(curr.line, "%s,%f,%f", itemcode, qty, price)   
+              
+                if check1 <> 3 then
+                    message("Invalid Fields.\n\nPlease check your field in your upload file.")
+                    stop()
+
+                endif 
+
+                | Check item code available or not
+                pitem = "         " & itemcode
+
+                select tdipu001.item
+                from tdipu001
+                where tdipu001.item = :pitem
+                selectdo
+                selectempty
+                    message("Item Code %s not found in Item Purchase(tdipu0101m000). Please maintain first.",pitem)
+                    stop()
+                endselect
+
+
+                |***** Insert Purchase Order Line (ttdpur401) *****
+                select tdpur400.*
+                from tdpur400 
+                where tdpur400.orno = :prod_order and tdpur400.sfbp = :business_partner and tdpur400.sfad = :business_address
+				selectdo
+                
+                    select tdpur401.*
+                    from tdpur401 for update
+                    where tdpur401.orno = :prod_order and tdpur401.sfbp = :business_partner and tdpur401.sfad = :business_address and tdpur401.item= :pitem
+                    selectdo
+                        | ret6 = dal.change.object("tdpur401")
+                        | dal.set.field("tdpur401.qoor", str$(qty))
+                        | dal.set.field("tdpur401.pric", str$(price))
+                        | dal.set.field("tdpur401.sfbp",tdpur400.sfbp)
+                        | | dal.set.field("tdpur401.sfbp",str$(business_partner))
+                        | ret6 = dal.save.object("tdpur401")
+                        | commit.transaction()
+                
+                    selectempty
+                        | message(prod_order)
+
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.item", pitem)
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.qoor", str$(qty))
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.pric", str$(price))
+                            | | stpapi.put.field("tdpur4101m000", "tdpur401.sfbp", tdpur400.sfad)
+                            | stpapi.form.command("tdpur4101m000", 5, "exec.cont.process", err.msg)
+
+
+                            | if not isspace(err.msg) then
+                            |     message("%s", err.msg)
+                            | else
+                            |     stpapi.end.session("tdpur4101m000",err.msg)
+                            |     message("Data Upload Successful.")
+                            | endif
+stpapi.put.field("tcmcs0112m000", "tcmcs012.uset", "STD")
+stpapi.put.field("tcmcs0112m000", "tcmcs012.cuni", "unt")
+ret = stpapi.change.view("tcmcs0112m000", err.msg)
+if not ret then
+    message(err.msg)
+endif
+
+
+
+                        ret6 = stpapi.synchronize.dialog("tdpur4101m000", "add", add1.msg)
+                        | message("%s", add1.msg)
+
+                        if ret6 then
+                            stpapi.put.field("tdpur4101m000", "tdpur401.orno", prod_order)
+                            stpapi.put.field("tdpur4101m000", "tdpur401.pono", "20")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.sqnb", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.item", pitem)
+                            stpapi.put.field("tdpur4101m000", "tdpur401.qoor", str$(qty))
+                            stpapi.put.field("tdpur4101m000", "tdpur401.pric", str$(price))
+
+                            stpapi.put.field("tdpur4101m000", "tdpur419.orno", prod_order)
+                            stpapi.put.field("tdpur4101m000", "tdpur419.pono", "20")
+                            stpapi.put.field("tdpur4101m000", "tdpur419.sqnb", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur419.qrrq", "1")
+                            | uset="STD"
+                            | cuni="unt"
+                            | select tcmcs012.cuni
+                            | from tcmcs012
+                            | where tcmcs012.cuni = :cuni and tcmcs012.uset = :uset
+                            | selectdo
+
+                            |     message("ok ",uset)
+                            | selectempty
+                            |     message("unit ",uset)
+                            | endselect
+                            stpapi.put.field("tdpur4101m000", "tcmcs012.uset", "STD")
+                            stpapi.put.field("tdpur4101m000", "tcmcs012.cuni", "unt")
+
+                            stpapi.put.field("tdpur4101m000", "tdpur419.curq", "unt")
+                            stpapi.put.field("tdpur4101m000", "tdpur419.cvrq", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur419.qccf", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur419.cucf", "unt")
+                            stpapi.put.field("tdpur4101m000", "tdpur419.cvcf", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur419.cfap", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur419.qmmr", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur419.cumr", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur419.cvmr", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur419.mrdt", str$(tdpur400.odat))
+                            stpapi.put.field("tdpur4101m000", "tdpur419.Refcntd", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur419.Refcntu", "0")
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.sfbp",str$(tdpur400.sfad))
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.otbp","GA0000001")
+
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.corg", "7")
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.oltp", "4")
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.sfad", "LOC000008")
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.sfcn", "")
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.sfwh", "")
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.effn", "0")
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.sdsc", "1")
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.crrf", "1")
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.citt", "")
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.crit", "")
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.mpnr", "")
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.subc", "2")
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.mpsn", "")
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.cmnf", "")
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.mitm", "")
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.revi", "")
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.btsp", "1")
+                            | stpapi.put.field("tdpur4101m000", "tdpur401.qual", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cuqp", "unt")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cvqp", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.leng", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.widt", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.thic", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ddta", str$(tdpur400.odat))
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ddtb", str$(tdpur400.odat))
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ddtc", str$(tdpur400.odat))
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ddtd", str$(tdpur400.odat))
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ddte", str$(tdpur400.odat))
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ddtf", str$(tdpur400.odat))
+                            stpapi.put.field("tdpur4101m000", "tdpur401.rdta", str$(tdpur400.odat))
+                            stpapi.put.field("tdpur4101m000", "tdpur401.porg", "4")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.pmde", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.pmse", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cupp", "unt")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cvpp", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.disc_1", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.disc_2", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.disc_3", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.disc_4", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.disc_5", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.disc_6", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.disc_7", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.disc_8", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.disc_9", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.disc_10", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.disc_11", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ldam_1", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ldam_2", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ldam_3", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ldam_4", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ldam_5", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ldam_6", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ldam_7", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ldam_8", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ldam_9", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ldam_10", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ldam_11", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dorg_1", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dorg_2", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dorg_3", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dorg_4", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dorg_5", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dorg_6", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dorg_7", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dorg_8", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dorg_9", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dorg_10", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dorg_11", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmty_1", "100")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmty_2", "100")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmty_3", "100")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmty_4", "100")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmty_5", "100")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmty_6", "100")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmty_7", "100")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmty_8", "100")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmty_9", "100")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmty_10", "100")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmty_11", "100")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmde_1", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmde_2", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmde_3", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmde_4", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmde_5", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmde_6", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmde_7", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmde_8", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmde_9", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmde_10", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmde_1", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmse_1", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmse_2", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmse_3", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmse_4", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmse_5", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmse_6", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmse_7", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmse_8", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmse_9", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmse_10", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmse_11", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmth_1", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmth_2", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmth_3", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmth_4", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmth_5", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmth_6", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmth_7", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmth_8", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmth_9", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmth_10", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dmth_11", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cdis_1", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cdis_2", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cdis_3", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cdis_4", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cdis_5", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cdis_6", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cdis_7", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cdis_8", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cdis_9", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cdis_10", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cdis_11", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dtrm", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.elgb", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.stdc", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.oamt", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.rcno", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.rseq", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.dino", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.qips", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.qidl", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.qiap", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.crej", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.qirj", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.qibo", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.qbbc", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cubp", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cvbp", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.fire", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.qibp", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ddon", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.lseq", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.pseq", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.amld", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.amod", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.damt", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.stsc", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.stsd", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.vryn", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.invn", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.invd", str$(tdpur400.odat))
+                            stpapi.put.field("tdpur4101m000", "tdpur401.copr_1", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.copr_2", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.copr_3", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.coop_1", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.coop_2", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.coop_3", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cpcp", "M01")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.lsel", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.clot", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cprj", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cspa", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cact", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cstl", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ccco", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ctrj", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.akcd", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cfrw", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.crbn", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.clyn", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.clip", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cpva", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.crcd", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ctcd", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cosn", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.qiiv", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.iamt", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.comm", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.appr", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.bptc", "MYS")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.exmt", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ceno", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.rcod", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.bpcl", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.taxp", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.gefo", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ldat", str$(tdpur400.odat))
+                            stpapi.put.field("tdpur4101m000", "tdpur401.serv", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.casi", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ptpe", "TRADE")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.glco", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.sbim", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.paft", "1")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.sbmt", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cuva", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cono", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cpon", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ccof", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cnig", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.paya", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cpay", "30")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cdec", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ptpa", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.pmnt", "10")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.pmni", "10")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.pmnd", "90")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.owns", "90")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ownr", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.lccl", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.spcn", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.bgxc", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.pegd", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.issp", "2")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cpcl", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cpln", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.csgp", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.acti", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.pmsk", "")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.txta", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.btx1", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.btx2", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.Refcntd", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.Refcntu", "0")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.odat", str$(tdpur400.odat))
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ddat", str$(tdpur400.ddat))
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cwar", "RAW")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cadr", "LOC000008")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.ccty", "MYS")
+                            stpapi.put.field("tdpur4101m000", "tdpur401.cvat", "NOTAX")
+                            | ret6 = stpapi.save("tdpur4101m000",err.msg)
+                            ret6 = stpapi.insert("tdpur4101m000", true, err.msg)
+
+                                if not ret6 then
+                                    message("error %s", err.msg)
+                                    ret5 = stpapi.recover("tdpur4101m000", err2.msg)
+                                    if not ret5 then
+                                        message("%s", err2.msg)
+                                    endif
+                                    
+                                endif
+
+                        endif
+
+                        stpapi.end.session("tdpur4101m000", err.msg)
+
+			
+
+                        | ret6 = dal.new.object("tdpur401")
+                        | dal.set.field("tdpur401.item", pitem)
+                        | dal.set.field("tdpur401.qoor", str$(qty))
+                        | dal.set.field("tdpur401.pric", str$(price))
+                        | dal.set.field("tdpur401.sfbp",tdpur400.sfad)
+                        | | dal.set.field("tdpur401.sfbp",tdpur400.sfbp)
+                        | | dal.set.field("tdpur401.otbp",tdpur400.otbp)
+                        | dal.set.field("tdpur401.sfad", tdpur400.sfad)
+                        | dal.set.field("tdpur401.odat", tdpur400.odat)
+                        | dal.set.field("tdpur401.ddat", tdpur400.ddat)
+                        | dal.set.field("tdpur401.t_cwar", "RAW")
+                        | dal.set.field("tdpur401.t_cadr", tdpur400.sfad)
+                        | dal.set.field("tdpur401.t_ccty", "MYS")
+                        | dal.set.field("tdpur401.t_ccty", "NOTAX")
+
+                        | ret6 = dal.save.object("tdpur401")
+                        | commit.transaction()
+
+                        | ret5 = dal.new.object("tdpur419")
+                        | dal.set.field("tdpur401.qrrq", str$(qty))
+                        | ret5 = dal.save.object("tdpur401")
+                        | commit.transaction()
+                    endselect
+
+                selectempty
+                    
+                endselect
+                | select tdpur401.*
+                | from tdpur401 for update
+                | where tdpur401.orno = :prod_order and tdpur401.sfbp = :business_partner and tdpur401.sfad = :business_address
+				| selectdo
+                | selectempty
+
+                |     ret6 = dal.new.object("tdpur401")
+                |     dal.set.field("tdpur401.item", "         " & strip$(itemcode))
+                |     dal.set.field("tdpur401.qoor", str$(qty))
+                |     dal.set.field("tdpur401.pric", str$(price))
+                |     dal.set.field("tdpur401.sfbp",str$(business_partner))
+                |     | dal.set.field("tdpur401.sfad", str$(business_address))
+                |     | dal.set.field("tdpur401.odat", str$(order_date))
+                |     | dal.set.field("tdpur401.ddat", str$(plan_date))
+                |     ret6 = dal.save.object("tdpur401")
+                   
+                | endselect
+            
+	    endwhile
+
+        | if ret6 = 0 then
+
+        
+
+        |     | commit.transaction()
+		| 	message("Data Upload Successful.")
+		| else 
+       
+        |     abort.transaction()
+ 
+        |     dal.get.error.message(err.msg)
+        |     message(err.msg)
+		| 	| message("Data Upload Failed. %s",ret6 )
+		| endif
+	
+		ret2 = seq.close(input.fp)
+		
+	endif
+
+
+ }
+	

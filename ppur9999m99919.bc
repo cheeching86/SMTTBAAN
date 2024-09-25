@@ -1,0 +1,453 @@
+|******************************************************************************
+|* tiedm9999m000  0  VRC B61C a  cus 
+|* Import Purchase Order (Customize)
+|* Jh Chen                                                                                            
+|* 2023-11-27
+|******************************************************************************
+|* Main table tdpur410 Purchase Order Line Form
+|******************************************************************************
+                                                                                
+|****************************** declaration section ***************************
+declaration:
+#include <bic_dam>
+#pragma used dll "ottdllbw"
+#pragma	used dll ottstpapihand	| Baan API Handler
+#include <bic_desktop>
+
+	table   ttdpur400	| Purchase Order
+	table   ttdpur401	| Purchase Order Lines
+
+
+    extern  domain  tcitem          itemcode,pitem,prod_order
+    extern  domain  tccom.bpid      business_partner
+    extern  domain  tccom.cadr      business_address
+    extern	domain	tcqrd1		    qty
+    extern  domain  tcpric          price
+    extern  domain  tcdate          order_date,plan_date
+
+    long	ret5, ret6
+|****************************** program section ********************************
+before.program:
+	
+    if get.compnr() <> 903 then	| Cancel Upload data
+        message("This Function only open for company 903 to Test!")
+
+		stop()
+
+	endif
+
+	import("tdpur400.orno", prod_order)
+    import("tdpur400.sfbp", business_partner)
+    import("tdpur400.sfad", business_address)
+    import("tdpur400.odat", order_date)
+    import("tdpur400.ddat", plan_date)
+
+|****************************** group section **********************************
+
+group.1:
+init.group:
+   get.screen.defaults()
+   
+
+|****************************** functions **************************************
+Functions:
+
+ function extern upload.request()
+ {		
+ 	|****************** Upload File into Server *************************
+ 	long	ret, ret1, count, ret2, input.fp
+ 	long 	check1
+ 	string	filename2(200)
+ 	string	curr.line(2048)
+ 	domain	tcmcs.str100	filename
+ 	long 	str.no, i, pos.1
+ 	string	temp.txt(250), instr(1)
+ 	string	err.msg(200)
+
+ 	ret1 = 0
+	
+ 	filename2 = "${BSE}/tmp_import/Upload_Purchase_order.csv"
+
+	if get.ui.mode() = 1 then
+		ret2 =  client2server("", filename2, false, false,true)
+	else
+		ret2 =  client.upload.file(filename2) 
+	endif
+
+	if ret2 <> 0 then	| Cancel Upload data
+		stop()
+
+	endif
+
+      
+    | select * from tdpur401 for update
+    | where tdpur401.orno = :prod_order 
+    | selectdo
+    |     dal.destroy.object("tdpur401")
+    |     | commit.transaction()
+    | endselect
+		
+
+	temp.txt = trim$(get.local.filename())
+	str.no = len(temp.txt)
+
+	for i = 1 to str.no
+	instr = temp.txt(i;1)
+	
+	if instr = "\" then
+		pos.1 = i  
+	endif
+	endfor
+
+ 	filename = temp.txt(pos.1+1)
+	
+ 	input.fp = seq.open(strip$(filename2),"rt")
+
+ 	if input.fp < 1 then
+ 		message("File Cannot be uploaded.")
+ 		return
+
+    else
+        seq.rewind(input.fp)
+        ret1 = seq.gets(curr.line, 2048, input.fp)
+
+		while ret1 = 0
+
+            ret1 = seq.gets(curr.line, 2048, input.fp)
+                | Check the Column have more then 3 or not
+                check1 = string.scan(curr.line, "%s,%f,%f", itemcode, qty, price)   
+              
+                if check1 <> 3 then
+                    message("Invalid Fields.\n\nPlease check your field in your upload file.")
+                    stop()
+
+                endif 
+
+                | Check item code available or not
+                pitem = "         " & itemcode
+
+                select tdipu001.item
+                from tdipu001
+                where tdipu001.item = :pitem
+                selectdo
+                selectempty
+                    message("Item Code %s not found in Item Purchase(tdipu0101m000). Please maintain first.",pitem)
+                    stop()
+                endselect
+
+                |***** Insert Purchase Order Line (ttdpur401) *****
+                select tdpur400.*
+                from tdpur400 
+                where tdpur400.orno = :prod_order and tdpur400.sfbp = :business_partner and tdpur400.sfad = :business_address
+				selectdo
+                    select tdpur401.*
+                    from tdpur401 for update
+                    where tdpur401.orno = :prod_order and tdpur401.sfbp = :business_partner and tdpur401.sfad = :business_address and tdpur401.item= :pitem
+                    selectdo
+                        ret6 = dal.change.object("tdpur401")
+                        dal.set.field("tdpur401.qoor", str$(qty))
+                        dal.set.field("tdpur401.pric", str$(price))
+                        dal.set.field("tdpur401.sfbp",tdpur400.sfbp)
+                        | dal.set.field("tdpur401.sfbp",str$(business_partner))
+                        ret6 = dal.save.object("tdpur401")
+                        commit.transaction()
+                
+                    selectempty
+message(tdpur400.sfbp)
+                       
+                        ret6 = dal.new.object("tdpur401")
+                        dal.set.field("tdpur401.item", pitem)
+                        dal.set.field("tdpur401.qoor", str$(qty))
+                        dal.set.field("tdpur401.pric", str$(price))
+                        dal.set.field("tdpur401.sfbp",tdpur400.sfad)
+                        | dal.set.field("tdpur401.sfbp",tdpur400.sfbp)
+                        | dal.set.field("tdpur401.otbp",tdpur400.otbp)
+                        dal.set.field("tdpur401.orno", tdpur400.orno)
+                        dal.set.field("tdpur401.pono", "10")
+                        dal.set.field("tdpur401.sqno", "1")
+                        dal.set.field("tdpur401.corg", "7")
+                        dal.set.field("tdpur401.oltp", "4")
+                        dal.set.field("tdpur401.sfad", tdpur400.sfad)
+                        dal.set.field("tdpur401.sfcn", "")
+                        dal.set.field("tdpur401.sfwh", "")
+                        dal.set.field("tdpur401.effn", "0")
+                        dal.set.field("tdpur401.sdsc", "1")
+dal.set.field("tdpur401.crrf", "1")
+dal.set.field("tdpur401.citt", "")
+dal.set.field("tdpur401.crit", "")
+dal.set.field("tdpur401.mpnr", "")
+dal.set.field("tdpur401.subc", "2")
+dal.set.field("tdpur401.mpsn", "")
+dal.set.field("tdpur401.cmnf", "")
+dal.set.field("tdpur401.mitm", "")
+dal.set.field("tdpur401.revi", "")
+dal.set.field("tdpur401.btsp", "1")
+dal.set.field("tdpur401.qual", "2")
+dal.set.field("tdpur401.cuqp", "unt")
+dal.set.field("tdpur401.cvqp", "1")
+dal.set.field("tdpur401.leng", "0")
+dal.set.field("tdpur401.widt", "0")
+dal.set.field("tdpur401.thic", "0")
+dal.set.field("tdpur401.ddta", tdpur400.odat)
+dal.set.field("tdpur401.ddtb", tdpur400.odat)
+dal.set.field("tdpur401.ddtc", tdpur400.odat)
+dal.set.field("tdpur401.ddtd", tdpur400.odat)
+dal.set.field("tdpur401.ddte", tdpur400.odat)
+dal.set.field("tdpur401.ddtf", tdpur400.odat)
+dal.set.field("tdpur401.rdta", tdpur400.odat)
+dal.set.field("tdpur401.porg", "4")
+dal.set.field("tdpur401.pmde", "")
+dal.set.field("tdpur401.pmse", "0")
+dal.set.field("tdpur401.cupp", "unt")
+dal.set.field("tdpur401.cvpp", "1")
+dal.set.field("tdpur401.disc_1", "0")
+dal.set.field("tdpur401.disc_2", "0")
+dal.set.field("tdpur401.disc_3", "0")
+dal.set.field("tdpur401.disc_4", "0")
+dal.set.field("tdpur401.disc_5", "0")
+dal.set.field("tdpur401.disc_6", "0")
+dal.set.field("tdpur401.disc_7", "0")
+dal.set.field("tdpur401.disc_8", "0")
+dal.set.field("tdpur401.disc_9", "0")
+dal.set.field("tdpur401.disc_10", "0")
+dal.set.field("tdpur401.disc_11", "0")
+dal.set.field("tdpur401.ldam_1", "0")
+dal.set.field("tdpur401.ldam_2", "0")
+dal.set.field("tdpur401.ldam_3", "0")
+dal.set.field("tdpur401.ldam_4", "0")
+dal.set.field("tdpur401.ldam_5", "0")
+dal.set.field("tdpur401.ldam_6", "0")
+dal.set.field("tdpur401.ldam_7", "0")
+dal.set.field("tdpur401.ldam_8", "0")
+dal.set.field("tdpur401.ldam_9", "0")
+dal.set.field("tdpur401.ldam_10", "0")
+dal.set.field("tdpur401.ldam_11", "0")
+dal.set.field("tdpur401.dorg_1", "2")
+dal.set.field("tdpur401.dorg_2", "2")
+dal.set.field("tdpur401.dorg_3", "2")
+dal.set.field("tdpur401.dorg_4", "2")
+dal.set.field("tdpur401.dorg_5", "2")
+dal.set.field("tdpur401.dorg_6", "2")
+dal.set.field("tdpur401.dorg_7", "2")
+dal.set.field("tdpur401.dorg_8", "2")
+dal.set.field("tdpur401.dorg_9", "2")
+dal.set.field("tdpur401.dorg_10", "2")
+dal.set.field("tdpur401.dorg_11", "2")
+dal.set.field("tdpur401.dmty_1", "100")
+dal.set.field("tdpur401.dmty_2", "100")
+dal.set.field("tdpur401.dmty_3", "100")
+dal.set.field("tdpur401.dmty_4", "100")
+dal.set.field("tdpur401.dmty_5", "100")
+dal.set.field("tdpur401.dmty_6", "100")
+dal.set.field("tdpur401.dmty_7", "100")
+dal.set.field("tdpur401.dmty_8", "100")
+dal.set.field("tdpur401.dmty_9", "100")
+dal.set.field("tdpur401.dmty_10", "100")
+dal.set.field("tdpur401.dmty_11", "100")
+dal.set.field("tdpur401.dmde_1", "")
+dal.set.field("tdpur401.dmde_2", "")
+dal.set.field("tdpur401.dmde_3", "")
+dal.set.field("tdpur401.dmde_4", "")
+dal.set.field("tdpur401.dmde_5", "")
+dal.set.field("tdpur401.dmde_6", "")
+dal.set.field("tdpur401.dmde_7", "")
+dal.set.field("tdpur401.dmde_8", "")
+dal.set.field("tdpur401.dmde_9", "")
+dal.set.field("tdpur401.dmde_10", "")
+dal.set.field("tdpur401.dmde_1", "")
+dal.set.field("tdpur401.dmse_1", "0")
+dal.set.field("tdpur401.dmse_2", "0")
+dal.set.field("tdpur401.dmse_3", "0")
+dal.set.field("tdpur401.dmse_4", "0")
+dal.set.field("tdpur401.dmse_5", "0")
+dal.set.field("tdpur401.dmse_6", "0")
+dal.set.field("tdpur401.dmse_7", "0")
+dal.set.field("tdpur401.dmse_8", "0")
+dal.set.field("tdpur401.dmse_9", "0")
+dal.set.field("tdpur401.dmse_10", "0")
+dal.set.field("tdpur401.dmse_11", "0")
+dal.set.field("tdpur401.dmth_1", "1")
+dal.set.field("tdpur401.dmth_2", "1")
+dal.set.field("tdpur401.dmth_3", "1")
+dal.set.field("tdpur401.dmth_4", "1")
+dal.set.field("tdpur401.dmth_5", "1")
+dal.set.field("tdpur401.dmth_6", "1")
+dal.set.field("tdpur401.dmth_7", "1")
+dal.set.field("tdpur401.dmth_8", "1")
+dal.set.field("tdpur401.dmth_9", "1")
+dal.set.field("tdpur401.dmth_10", "1")
+dal.set.field("tdpur401.dmth_11", "1")
+dal.set.field("tdpur401.cdis_1", "")
+dal.set.field("tdpur401.cdis_2", "")
+dal.set.field("tdpur401.cdis_3", "")
+dal.set.field("tdpur401.cdis_4", "")
+dal.set.field("tdpur401.cdis_5", "")
+dal.set.field("tdpur401.cdis_6", "")
+dal.set.field("tdpur401.cdis_7", "")
+dal.set.field("tdpur401.cdis_8", "")
+dal.set.field("tdpur401.cdis_9", "")
+dal.set.field("tdpur401.cdis_10", "")
+dal.set.field("tdpur401.cdis_11", "")
+dal.set.field("tdpur401.dtrm", "1")
+dal.set.field("tdpur401.elgb", "1")
+dal.set.field("tdpur401.stdc", "0")
+dal.set.field("tdpur401.oamt", "1")
+dal.set.field("tdpur401.rcno", "")
+dal.set.field("tdpur401.rseq", "0")
+dal.set.field("tdpur401.dino", "0")
+dal.set.field("tdpur401.qips", "0")
+dal.set.field("tdpur401.qidl", "0")
+dal.set.field("tdpur401.qiap", "0")
+dal.set.field("tdpur401.crej", "0")
+dal.set.field("tdpur401.qirj", "0")
+dal.set.field("tdpur401.qibo", "0")
+dal.set.field("tdpur401.qbbc", "0")
+dal.set.field("tdpur401.cubp", "")
+dal.set.field("tdpur401.cvbp", "1")
+dal.set.field("tdpur401.fire", "2")
+dal.set.field("tdpur401.qibp", "0")
+dal.set.field("tdpur401.ddon", "0")
+dal.set.field("tdpur401.lseq", "0")
+dal.set.field("tdpur401.pseq", "0")
+dal.set.field("tdpur401.amld", "0")
+dal.set.field("tdpur401.amod", "0")
+dal.set.field("tdpur401.damt", "0")
+dal.set.field("tdpur401.stsc", "1")
+dal.set.field("tdpur401.stsd", "1")
+dal.set.field("tdpur401.vryn", "2")
+dal.set.field("tdpur401.invn", "")
+dal.set.field("tdpur401.invd", tdpur400.odat)
+dal.set.field("tdpur401.copr_1", "0")
+dal.set.field("tdpur401.copr_2", "0")
+dal.set.field("tdpur401.copr_3", "0")
+dal.set.field("tdpur401.coop_1", "0")
+dal.set.field("tdpur401.coop_2", "0")
+dal.set.field("tdpur401.coop_3", "0")
+dal.set.field("tdpur401.cpcp", "M01")
+dal.set.field("tdpur401.lsel", "1")
+dal.set.field("tdpur401.clot", "")
+dal.set.field("tdpur401.cprj", "")
+dal.set.field("tdpur401.cspa", "")
+dal.set.field("tdpur401.cact", "")
+dal.set.field("tdpur401.cstl", "")
+dal.set.field("tdpur401.ccco", "")
+dal.set.field("tdpur401.ctrj", "")
+dal.set.field("tdpur401.akcd", "")
+dal.set.field("tdpur401.cfrw", "")
+dal.set.field("tdpur401.crbn", "2")
+dal.set.field("tdpur401.clyn", "2")
+dal.set.field("tdpur401.clip", "2")
+dal.set.field("tdpur401.cpva", "0")
+dal.set.field("tdpur401.crcd", "")
+dal.set.field("tdpur401.ctcd", "")
+dal.set.field("tdpur401.cosn", "")
+dal.set.field("tdpur401.qiiv", "0")
+dal.set.field("tdpur401.iamt", "0")
+dal.set.field("tdpur401.comm", "2")
+dal.set.field("tdpur401.appr", "2")
+dal.set.field("tdpur401.bptc", "MYS")
+dal.set.field("tdpur401.exmt", "2")
+dal.set.field("tdpur401.ceno", "")
+dal.set.field("tdpur401.rcod", "")
+dal.set.field("tdpur401.bpcl", "")
+dal.set.field("tdpur401.taxp", "2")
+dal.set.field("tdpur401.gefo", "2")
+dal.set.field("tdpur401.ldat", tdpur400.odat)
+dal.set.field("tdpur401.serv", "")
+dal.set.field("tdpur401.casi", "")
+dal.set.field("tdpur401.ptpe", "TRADE")
+dal.set.field("tdpur401.glco", "")
+dal.set.field("tdpur401.sbim", "2")
+dal.set.field("tdpur401.paft", "1")
+dal.set.field("tdpur401.sbmt", "")
+dal.set.field("tdpur401.cuva", "0")
+dal.set.field("tdpur401.cono", "")
+dal.set.field("tdpur401.cpon", "0")
+dal.set.field("tdpur401.ccof", "")
+dal.set.field("tdpur401.cnig", "2")
+dal.set.field("tdpur401.paya", "")
+dal.set.field("tdpur401.cpay", "30")
+dal.set.field("tdpur401.cdec", "")
+dal.set.field("tdpur401.ptpa", "")
+dal.set.field("tdpur401.pmnt", "10")
+dal.set.field("tdpur401.pmni", "10")
+dal.set.field("tdpur401.pmnd", "90")
+dal.set.field("tdpur401.owns", "90")
+dal.set.field("tdpur401.ownr", "")
+dal.set.field("tdpur401.lccl", "")
+dal.set.field("tdpur401.spcn", "")
+dal.set.field("tdpur401.bgxc", "2")
+dal.set.field("tdpur401.pegd", "2")
+dal.set.field("tdpur401.issp", "2")
+dal.set.field("tdpur401.cpcl", "")
+dal.set.field("tdpur401.cpln", "")
+dal.set.field("tdpur401.csgp", "")
+dal.set.field("tdpur401.acti", "")
+dal.set.field("tdpur401.pmsk", "")
+dal.set.field("tdpur401.txta", "0")
+dal.set.field("tdpur401.btx1", "0")
+dal.set.field("tdpur401.btx2", "0")
+dal.set.field("tdpur401.Refcntd", "0")
+dal.set.field("tdpur401.Refcntu", "0")
+
+
+                        dal.set.field("tdpur401.odat", tdpur400.odat)
+                        dal.set.field("tdpur401.ddat", tdpur400.ddat)
+                        dal.set.field("tdpur401.cwar", "RAW")
+                        dal.set.field("tdpur401.cadr", tdpur400.sfad)
+                        dal.set.field("tdpur401.ccty", "MYS")
+                        dal.set.field("tdpur401.cvat", "NOTAX")
+
+                        ret6 = dal.save.object("tdpur401")
+                        commit.transaction()
+
+                        | ret5 = dal.new.object("tdpur419")
+                        | dal.set.field("tdpur401.qrrq", str$(qty))
+                        | ret5 = dal.save.object("tdpur401")
+                        | commit.transaction()
+                    endselect
+                selectempty
+
+                endselect
+                | select tdpur401.*
+                | from tdpur401 for update
+                | where tdpur401.orno = :prod_order and tdpur401.sfbp = :business_partner and tdpur401.sfad = :business_address
+				| selectdo
+                | selectempty
+
+                |     ret6 = dal.new.object("tdpur401")
+                |     dal.set.field("tdpur401.item", "         " & strip$(itemcode))
+                |     dal.set.field("tdpur401.qoor", str$(qty))
+                |     dal.set.field("tdpur401.pric", str$(price))
+                |     dal.set.field("tdpur401.sfbp",str$(business_partner))
+                |     | dal.set.field("tdpur401.sfad", str$(business_address))
+                |     | dal.set.field("tdpur401.odat", str$(order_date))
+                |     | dal.set.field("tdpur401.ddat", str$(plan_date))
+                |     ret6 = dal.save.object("tdpur401")
+                   
+                | endselect
+            
+	    endwhile
+
+        if ret6 = 0 then
+
+        
+
+            commit.transaction()
+			message("Data Upload Successful.")
+		else 
+       
+            abort.transaction()
+ 
+            dal.get.error.message(err.msg)
+            message(err.msg)
+			| message("Data Upload Failed. %s",ret6 )
+		endif
+	
+		ret2 = seq.close(input.fp)
+		
+	endif
+
+
+ }
+	

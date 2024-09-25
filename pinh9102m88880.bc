@@ -1,0 +1,100 @@
+|******************************************************************************
+|* whinh9102m9999  0  VRC B61C a  cus 
+|* Test 2
+|* baan
+|* 23-05-24 
+|******************************************************************************
+|* Script Type: DAL
+|******************************************************************************
+
+#include <bic_dam>
+#pragma used dll "ottdllbw"
+#pragma	used dll ottstpapihand	| Baan API Handler
+#include <bic_desktop>
+#include <bic_cmf>
+
+table	ttcmcs050 		
+table	twhinh310 		| Warehousing Receipt Header
+
+extern	domain	whinh.oorg	order.origin
+long	 ret6
+
+
+|****************************** function **********************************
+
+|Functions:	
+function extern string before.save.object(string rc_no)
+{
+string 	form1.msg(100), o.error(100), error.msg(100),rcno(100)
+
+order.origin = whinh.oorg.purchase
+                DllUsage
+                Expl      : AFS to generate CRM attentions 
+                Pre       : NA
+                Post      : NA
+                Input     :i.catt -> Attention Code
+                           i.dsca -> Attention Description
+                Output :
+                                o.error -> Error Msg
+
+                Return  : Add Attention 
+                EndDllUsage
+               
+
+                               
+                domain tcpdno  v.result
+                rcno = "ww"
+                o.error = "a"
+                v.result = "OK"
+    
+                |stpapi.form.command("whinh3512m000", 5, "exec.add.set",o.error)
+                stpapi.form.command("whinh3512m000", 5, "option.new.receipt", o.error)
+                | if not isspace(o.error) then
+                |              return(o.error)
+                | endif
+                | stpapi.put.field("whinh3512m000", "whinh310.rcno", "RC")
+                stpapi.put.field("whinh3512m000", "whinh310.rcno", "RC")
+                stpapi.put.field("whinh3512m000", "whinh310.cwar", str$("RAW"))
+                stpapi.put.field("whinh3512m000", "whinh310.sfbp", "GS0000001")
+                stpapi.put.field("whinh3512m000", "whinh310.dino", "CWS")
+                stpapi.put.field("whinh3512m000", "easy.number", "A01000324")
+                
+                ret6 = stpapi.insert("whinh3512m000", true, error.msg)
+
+                stpapi.get.field("whinh3512m000", "whinh310.rcno", rcno,11)
+
+                ret6 = stpapi.synchronize.dialog("whinh3512m000", "add", error.msg)
+
+                if ret6 then
+
+
+                        stpapi.put.field("whinh3112s000", "whinh312.rcno", str$(rcno))
+                        stpapi.put.field("whinh3112s000", "whinh312.rcln", str$("10"))
+                        stpapi.put.field("whinh3112s000", "whinh312.sfbp", str$("SS0000069"))
+                        stpapi.put.field("whinh3112s000", "whinh312.psqr", "1000.0000")
+                        stpapi.put.field("whinh3112s000", "whinh312.psun", "pcs")
+                        stpapi.put.field("whinh3112s000", "whinh312.psno", "CWS")
+                        stpapi.put.field("whinh3112s000", "whinh312.cwar", "RAW")
+                        stpapi.put.field("whinh3112s000", "whinh312.rclo", "RECV")
+                        stpapi.put.field("whinh3112s000", "whinh312.mpnr", "X553 TRAY 390X326X35MM TRIAC")             
+                        ret6 = stpapi.insert("whinh3512m000", true, error.msg)
+                        if not isspace(error.msg) then
+                                        return(error.msg)
+                        endif
+
+                    ret6 = stpapi.insert("whinh3512m000", true, error.msg)
+
+                    if not ret6 then
+                        ret6 = stpapi.recover("whinh3820m000", error.msg)
+                        return("recover")
+                    endif
+                endif
+                stpapi.end.session("whinh3820m000", error.msg)
+                stpapi.end.session("whinh3512m000", error.msg)
+
+            return(rcno)
+
+
+
+	
+}

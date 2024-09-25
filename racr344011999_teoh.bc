@@ -1,0 +1,844 @@
+|******************************************************************************
+|* tfacr344011000
+|* Print Business Partner Statements
+|* Anil Rodrigues
+|* 25/11/93 [09:59]
+|******************************************************************************
+|****************************** DECLARATION SECTION ***************************
+|*	Rev.No. 3  tfB50asys2  02 Sep 97 mskanth
+|* code cleaned
+|*	Rev.No. 4  tfB50asys2  02 Sep 97 mskanth
+|* .
+|*	Rev.No. 5  tfB50asys2  17 Sep 97 chramk
+|* eroor in scaning sort fields solved
+|*	Rev.No. 2  tfB50asys4  13 Nov 97 cpvbabu
+|* check in for code freeze
+|*	Rev.No. 2  tfB50asys5  27 Nov 97 udesai
+|* VTD Error- Top Bottom Value changed to 2
+|*	Rev.No. 3  tfB50asys5  27 Nov 97 bradhika
+|* changes made
+|*	Rev.No. 2  tfB50asys6  29 Nov 97 mskanth
+|* interim check in
+|*	Rev.No. 2  tfB50asy22  15 Apr 98 mskanth
+|* Pay from business partner label and field added.
+|*	Rev.No. 2  tfB50bsy08  11 Jul 98 ganeshs
+|* label alighend
+|*	Rev.No. 2  tfB50bwrk  13 Nov 98 cfieger
+|* Checked in by session ttadv6200m000
+|*	Rev.No. 2  tfB50csy09  22 Jul 99 rkardhas
+|* The labels with fully names used for 'Anging Analysis in Days' and 'Anging
+|* Analysis in Months'.
+|*	Rev.No. 3  tfB50csy09  27 Jul 99 ahekstra
+|* Checked in by session ttadv6200m000
+|*	Rev.No. 2  tfB60asy01  18 Oct 99 bsp
+|*	Rev.No. 3  tfB60asy01  25 Oct 99 tbase
+|*	Rev.No. 2  tfB60asy02  23 Dec 99 hvhoorne
+|* DF35886-1/DF84642-1:
+|* ACP and ACR brought in line regarding variables and working of BP-statements
+|* and Reminder letters.
+|*	Rev.No. 2  tfB52asy07  08 Jun 00 ylakshmi
+|* Page no., comp no, date included
+|*	Rev.No. 2  tfB52asy13  20 Sep 00 mbharat
+|* Labels Changed from "Totals in" to "The following total(s) is (are) in "
+|* and "Grand Totals in" to "The following grand total(s) is (are) in "
+|*	Rev.No. 2  tfB52asy15  23 Nov 00 djagann1
+|* Label lengths altered to fit in
+|*	Rev.No. 2  tfB52asy17  27 Apr 01 kkishore
+|* #DF32974 , #SL7971 ,kkishore
+|* Customer address does not appear on Business Partner Statemments (session
+|* tfacr3440m000). Now this is corrected. Changes marked with #32974.
+|*	Rev.No. 3  tfB52asy17  27 Apr 01 kkishore
+|* #SL 105901, akrishn1
+|* The report didn`t show the amounts in euro (in bgl0)if the option was
+|* selected. Changes made in tfacr3440m000 and tfacr344011000. In
+|* tfacr344011000 the "totals in" field`s print expression was changed from
+|* tfacr200.ccur to cust.totl. as a result of this also the standard of
+|* tfacr3440m000 had to be changed. Back ported from grieg
+|*	Rev.No. 4  tfB52asy17  17 May 01 ybhavani
+|* DB to SQL changes done.Changes marked with Reger_DB
+|*	Rev.No. 5  tfB52asy17  29 May 01 psivaprg
+|* DB to SQL changes reviewed -Pannirselvam
+|*	Rev.No. 2  tfB52asy20  17 Oct 01 dnagaval
+|* VTD warning "Label position not conform SUI" is cleared
+|* and the label position for Company No. and Page No. is changed
+|*	Rev.No. 3  tfB52asy20  19 Oct 01 dnagaval
+|* The following VTD warnings are cleared
+|* "No special field found or wrong special field used - Report Description"
+|* "Label position not conform SUI - Page No."
+|* "No special field found or wrong special field used - Company Number"
+|* "Label not found or wrong label used - Company Number"
+|*	Rev.No. 4  tfB52asy20  15 Nov 01 vnarayan
+|* vsc warnings
+|*	Rev.No. 5  tfB52asy20  20 Nov 01 vnarayan
+|* vsc warnings solved
+|*	Rev.No. 2  tfB52bsy02  23 Apr 02 aayyasam
+|* simple layout modifications
+|*	Rev.No. 2  tfB52bsy02  24 Apr 02
+|* Checked in by Import
+|*	Rev.No. 2  tfB52bsy04  01 Nov 02 bkumar1
+|* minor change.
+|*	Rev.No. 3  tfB52bsy04  18 Nov 02 vnarayan
+|* Sol 130065 for  DF 130705
+|* When the city name is defined along with it ctse(state) and pstc (zip code)
+|* are displayed. Problem occurs be'cos in report script of tfacr3440m000 name
+|* and namf  are concatenated with cste and pstc. VSC warnings solved.
+|*	Rev.No. 2  tfB60asy05  26 Nov 02 vnarayan
+|* Remark 106-129473 solved. layout 27 deleted.
+|*	Rev.No. 2  tfB60asy08  10 Apr 03 vnarayan
+|* remark 133863 solved
+|*	Rev.No. 3  tfB60asy08  22 Apr 03 vnarayan
+|* SOL 133699 ported
+|*	Rev.No. 4  tfB60asy08  13 May 03 vnarayan
+|* SOL 131339 ported.
+|* SITUATION DESCRIPTION:
+|* There is no currency printed for the totals in each currency. After "The
+|* following total(s) is (are) in " blank is printed.
+|* SOLUTION DESCRIPTION:
+|* Relevant currency is printed along with "The following total(s) is (are) in "
+|* instead of blank.
+|*	Rev.No. 5  tfB60asy08  13 May 03 vnarayan
+|* SOL 133660 ported
+|*	Rev.No. 2  tfB60asy09  27 May 03 vnarayan
+|* all aging amounts will be printed as per the currency format
+|*	Rev.No. 3  tfB60asy09  28 May 03 shermesm
+|* change of label length
+|*	Rev.No. 4  tfB60asy09  02 Jun 03 vnarayan
+|* Remark 200-87793 solved. report script modified to print totals in A096
+|* format
+|*	Rev.No. 5  tfB60asy09  09 Jun 03 vnarayan
+|* remark 200-88080 solved
+|*	Rev.No. 2  tfB60asy10  19 Jun 03 vnarayan
+|* SOL 135034 ported from corelli. maximum lines condition on footer text
+|* removed
+|*	Rev.No. 2  tfB60asy12  31 Jul 03 vnarayan
+|* for input field "sort.cuno.rep" the sort mode changed from "presorted" to
+|* "Ascending"
+|*	Rev.No. 2  tfB60asy20  01 Mar 04 vnarayan
+|* SOL 141814 ported.When "Enable Variables for Reminder Text is set to 'No'  in
+|* report layout before.field - sort.cuno.rep - 26, the varibale "heco" will be
+|* printed to display proper address format.
+|* But because of the condition "htxt <> 0" (in output expression) it is not
+|* getting printed. and when "Enable Variables for Reminder Text is set to 'No'
+|*  , htxt can be 0. in such cases it is not printing the address format, even
+|* though user set up address formats properly.
+|* Now the condition is removed to solve the problem.
+|*	Rev.No. 2  tfB60asy23  30 Sep 04 gvasavi
+|* solution 145307 solved.
+|*	Rev.No. 2  tfB60asy23  12 Jan 05 bsp
+|*	Rev.No. 2  tfB60asy28  27 Sep 05 bsp
+|* TIV number of component set to 1050
+|*	Rev.No. 2  tfB60asy38  11 Jul 07 vjethwan
+|* The defect ERP-00000-14180 has been ported with soluiton no 217166.
+|*	Rev.No. 3  tfB60asy38  19 Jul 07 vjethwan
+|* Request ERP-00000-16725 has been ported with solution no 218886
+|* Report does not print the column headings and column fields at the specified
+|* positions in the Statement Layout(tfacr3114m000).
+|* Size of the report increased from 200 to 215 as the size of the strings used
+|* for head.string and detail.string used is 215 and for layouts
+|* before.field(head.string) and after.field(detail.string), link with domain
+|* checkbox is checked.
+|*	Rev.No. 4  tfB60asy38  30 Jul 07 vjethwan
+|* Request ERP-00000-16645 and ERP-00000-16800 have been ported with following
+|* Sol SOL 218935-1
+|* Report does not print the column headings and column fields for total amount
+|* fields at the specified positions in Reminder line Layout(tfacr3101m000) and
+|* Statement Detail Layout(tfacr3114m000).
+|* For layouts of Report tfacr342011000 After.field(sort.cuno.rep) and
+|* After.field(tfacr303.ccur), link to domain checkbox is checked.
+|* For layouts of Report tfacr344011000 After.field(sort.cuno.rep) and
+|* After.field(tfacr200.ccur), link to domain checkbox is checked.
+|* SOL 218935-2
+|* "Print Reminder Letters(tfacr3420m000) does not print invoices
+|* when there are no entries in Receipt Schedule(tfacr201).
+|*	Rev.No. 2  tfB60ast2  07 May 08 snamired
+|* Request id: ERP-00000-35518 ,SOL 228594 has been ported from sigma.
+|* The reports "Print Statements"(tfacr3440m000) and "Print Reminder
+|* Letters"(tfacr3420m000) does not print any report when any XML file format is
+|* given in the print device.
+|*	Rev.No. 2  tfB60asy46  23 Sep 08 rvdlinde
+|* More translation space for "Amount not aged" needed.
+|*	Rev.No. 2  tfB60asy61  29 Nov 11 kshwany
+|* TCS Remark |#800-180401, Kadir Shwany, 29-11-2011
+|*	Rev.No. 2  tfB60asy67  12 Oct 12 mbuczkie
+|* Domain tfacp.days was extended to 4 positions.
+|******************************************************************************
+declaration:
+#ident "@(#)tfacr344011000  tfB60asy67  nlbaudv3  Rev.No. 2  12 Oct 12  mbuczkie"
+
+	table	ttfacr000		|*ACR Parameters	|#125647.n
+	table	ttfacr314		|* Statement Variables
+
+	long	pageno
+	long	total.lines
+
+	domain	tcncmp		comp.no				|#125647.sn
+	domain	tcmcs.s132m	err.mess			|#125647.En
+	domain 	tcbool		pr.aging
+	domain 	tcbool		tot.aging
+	domain	tfgld.amnt	tot1.open
+	domain	tfgld.amnt	tot2.open
+	domain	tfgld.amnt	tot3.open			|#10015779.n
+	domain	tcmcs.str215	total.string1
+	domain  tcmcs.str60m    heco(20)			|#118988.n
+		boolean		first.time			|#244891.n
+
+	#define monospace					|#1007149.n
+
+|****************************** program section ******************************
+
+before.program:
+	comp.no = get.compnr()					|#125647.sn
+if not tfacr.dll0001.parameters.get.with.error.message(comp.no,err.mess) then
+	message(err.mess)
+endif								|#125647.en
+	lattr.textexpand = true
+								|#Reger_DB.so
+|	db.change.order(ttfacr314,3)
+								|#Reger_DB.eo
+	first.time = true					|#244891.n
+
+
+|****************************** layouts  *************************************
+|****************************** before.sort.cuno.rep.25 **********************
+|before.sort.cuno.rep.20:					|#125647.o
+before.sort.cuno.rep.25:					|#125647.n
+	|select	tccom130.ln01					|#Reger_DB.sn
+	|from	tccom130
+	|inner join tccom112
+	|where	tccom130.cadr = tccom112.cadr
+	|selectdo
+	|tccom130.ln01 = tccom130.ln01
+	|endselect
+
+before.layout:
+	if lattr.break then
+		pageno = 1
+	else
+		pageno = pageno + 1
+	endif
+	if pageno = 1 then
+								|#244891.sn
+		if not first.time then
+			page()
+		else
+			first.time = false
+		endif 
+								|#244891.en
+|		skip(tfacr000.blfp)				|#245938.o
+								|#247628.so
+|		skip(tfacr000.blfp - (lattr.lineno-1) )		|#245938.n
+								|#247628.eo
+								|#247628.sn
+		if tfacr000.blfp - (lattr.lineno-1) > 0 then
+			skip(tfacr000.blfp - (lattr.lineno-1) )
+		endif
+								|#247628.en
+	else
+		skip(tfacr000.blop)
+	endif
+	pgno = pageno
+	if ( etol(font) < 1 ) or ( etol(font) > 16 ) then
+		font = ltoe(1)
+	endif
+	concat.address()					|#32974.n
+
+|	spool.pr.line = cs$(etol(font))		|#10015779.en	|#133863.o
+								|#145307.so
+|	spool.pr.line = cf$(etol(font))				|#133863.n
+								|#145307.eo
+	|#pf$()is used to change the printer font settings.
+								|#1400045.so
+|	if not spool.xml then 					|#228594.n
+|		spool.pr.line = pf$(etol(font))			|#145307.n
+|	endif							|#228594.n
+|	spool.line()
+|	lattr.lineno = lattr.lineno + 1				|#24126.n
+||	lattr.print = false					|#32974.o
+								|#1400045.eo
+      if not spool.xml and not spool.ssrs then			|#1400045.sn
+            spool.pr.line = pf$(etol(font))
+            spool.line()
+            lattr.lineno = lattr.lineno + 1
+      endif							|#1400045.en
+      
+								|#1572978.sn
+|****************************** before.sort.cuno.rep.26 **********************
+before.sort.cuno.rep.26:
+before.layout:
+	if ( lattr.lineno + tfacr000.blab + 1 ) > spool.pg.length then
+		page()
+	endif
+								
+	if ( lattr.pageno > 1 and lattr.lineno <= tfacr000.blop ) then
+		skip(tfacr000.blop - lattr.lineno + 1)
+	endif
+								
+|****************************** before.sort.cuno.rep.27 **********************
+before.sort.cuno.rep.27:
+before.layout:
+	if ( lattr.lineno + tfacr000.blab + 1 ) > spool.pg.length then
+		page()
+	endif
+								
+	if ( lattr.pageno > 1 and lattr.lineno <= tfacr000.blop ) then
+		skip(tfacr000.blop - lattr.lineno + 1)
+	endif
+								|#1572978.en
+					
+|****************************** before.sort.cuno.rep.40 **********************
+before.sort.cuno.rep.40:
+before.layout:
+	if ( lattr.lineno + tfacr000.blab + 1 ) > spool.pg.length then
+		page()
+	endif
+								|#1572978.sn
+	if ( lattr.pageno > 1 and lattr.lineno <= tfacr000.blop ) then
+		skip(tfacr000.blop - lattr.lineno + 1)
+	endif
+								|#1572978.en
+																			
+																			
+|****************************** detail.10 ************************************
+detail.10:
+before.layout:
+	add.totals()
+	if ( lattr.lineno + tfacr000.blab ) > spool.pg.length then
+		page()
+								|#1572978.sn
+		if lattr.lineno <= tfacr000.blop then 		
+			skip(tfacr000.blop - lattr.lineno + 1)
+		endif						
+								|#1572978.en
+	endif
+
+|****************************** after.tfacr200.ccur.10 ***********************
+after.tfacr200.ccur.10:
+before.layout:
+	form.total.lines.ccur()
+	if ( total.lines = 0 ) then
+		lattr.print = false
+	else
+		if ( lattr.lineno + tfacr000.blab
+|		     + total.lines ) > spool.pg.length then	|#1579620.o
+		     + total.lines + 2) > spool.pg.length then	|#1579620.n
+			page()
+								|#1572978.sn
+			if lattr.lineno <= tfacr000.blop then 		
+				skip(tfacr000.blop - lattr.lineno + 1)
+			endif						
+							
+		endif						|#1572978.en
+	endif
+								|#1572978.sn
+|****************************** after.tfacr200.ccur.20 ***********************
+after.tfacr200.ccur.20:
+before.layout:
+	if ( lattr.lineno + tfacr000.blab + total.lines ) > spool.pg.length then
+		page()
+		if lattr.lineno <= tfacr000.blop then 		
+				skip(tfacr000.blop - lattr.lineno + 1)
+				
+		endif										
+							
+	endif
+								|#1572978.en
+|****************************** after.tfacr200.ccur.30 ***********************
+after.tfacr200.ccur.30:
+before.layout:
+	tot1.open = 0.0
+								|#1572978.sn
+	if ( lattr.lineno + tfacr000.blab + total.lines ) > spool.pg.length then
+		page()
+		if lattr.lineno <= tfacr000.blop then 		
+				skip(tfacr000.blop - lattr.lineno + 1)
+						
+		endif										
+							
+	endif	
+								|#1572978.en							
+
+|****************************** after.sort.cuno.rep.10 ***********************
+after.sort.cuno.rep.10:
+before.layout:
+	form.total.lines.cust()
+	if ( total.lines = 0 ) then
+		lattr.print = false
+	else
+		if ( lattr.lineno + tfacr000.blab
+|		     + total.lines ) > spool.pg.length then	|#1579620.o
+		     + total.lines + 4 ) > spool.pg.length then	|#1579620.n	
+			page()
+								|#1572978.sn
+			if lattr.lineno <= tfacr000.blop then 		
+				skip(tfacr000.blop - lattr.lineno + 1)
+			endif						
+								|#1572978.en
+		endif
+	endif							
+							
+
+								|#1579620.so
+|								|#1572978.sn
+|				
+||****************************** after.sort.cuno.rep.12 ***********************
+|after.sort.cuno.rep.12:
+|before.layout:
+|	if ( lattr.lineno + tfacr000.blab + total.lines ) > spool.pg.length then
+|		page()
+|		if lattr.lineno <= tfacr000.blop then 		
+|				skip(tfacr000.blop - lattr.lineno + 1)
+|						
+|		endif	
+|	endif
+|	
+||****************************** after.sort.cuno.rep.20 ***********************
+|after.sort.cuno.rep.20:
+|before.layout:
+|	if ( lattr.lineno + tfacr000.blab + total.lines ) > spool.pg.length then
+|		page()
+|		if lattr.lineno <= tfacr000.blop then 		
+|				skip(tfacr000.blop - lattr.lineno + 1)
+|							
+|		endif										
+|							
+|	endif
+|								|#1572978.en
+								|#1579620.eo
+|****************************** after.sort.cuno.rep.30 ***********************								
+after.sort.cuno.rep.30:
+before.layout:
+	tot2.open = 0
+	tot3.open = 0 						|#10015779.n
+								
+								|#1579620.so
+|								|#1572978.sn
+|	if ( lattr.lineno + tfacr000.blab + total.lines ) > spool.pg.length then
+|		page()
+|		if lattr.lineno <= tfacr000.blop then 		
+|				skip(tfacr000.blop - lattr.lineno + 1)
+|							
+|		endif												
+|							
+|	endif
+|								|#1572978.en
+								|#1579620.eo
+
+								|#800-180401.so
+|after.sort.cuno.rep.32:					|#233769.sn
+||* Aging Summary
+|before.layout:
+|	if prnt.aging.yn <> tcyesno.yes then
+|		lattr.print = false
+|	endif							|#233769.en
+|								|#245204.sn
+|	if ( lattr.lineno + tfacr000.blab ) > spool.pg.length then
+|		page()
+|		if lattr.lineno <= tfacr000.blop then 		|#247586.n
+|			skip(tfacr000.blop - lattr.lineno + 1)
+|		endif						|#247586.n
+|	endif
+|								|#245204.en
+|
+|after.sort.cuno.rep.33:					|#233769.sn
+||* Aging Summary
+|before.layout:
+|	if prnt.aging.yn <> tcyesno.yes then
+|		lattr.print = false
+|	endif							|#233769.en
+|								|#245204.sn
+|	if ( lattr.lineno + tfacr000.blab ) > spool.pg.length then
+|		page()
+|		if lattr.lineno <= tfacr000.blop then 		|#247586.n
+|			skip(tfacr000.blop - lattr.lineno + 1)
+|		endif						|#247586.n
+|	endif
+|								|#245204.en
+|
+|after.sort.cuno.rep.34:					|#233769.sn
+||* Aging Summary
+|before.layout:
+|	if prnt.aging.yn <> tcyesno.yes then
+|		lattr.print = false
+|	endif							|#233769.en
+|								|#245204.sn
+|	|* 5 extra because the layout is 5 lines long
+|	if ( lattr.lineno + tfacr000.blab + 5 ) > spool.pg.length then
+|		page()
+|		if lattr.lineno <= tfacr000.blop then 		|#247586.n
+|			skip(tfacr000.blop - lattr.lineno + 1)
+|		endif						|#247586.n
+| 	endif
+|								|#245204.en
+								|#800-180401.eo
+								
+|****************************** after.sort.cuno.rep.35 ***********************
+after.sort.cuno.rep.35:						|#233769.sn
+|* Aging Summary
+before.layout:
+|	if prnt.aging.yn <> tcyesno.yes then			|#800-180401.so
+|		lattr.print = false
+|	endif							|#233769.en
+								|#800-180401.eo
+								|#245204.sn
+	if ( lattr.lineno + tfacr000.blab ) > spool.pg.length then
+		page()
+		if lattr.lineno <= tfacr000.blop then 		|#247586.n
+			skip(tfacr000.blop - lattr.lineno + 1)
+		endif						|#247586.n
+	endif
+								|#245204.en
+
+|****************************** after.sort.cuno.rep.36 ***********************
+after.sort.cuno.rep.36:						|#233769.sn
+|* Aging Summary
+before.layout:
+|	if prnt.aging.yn <> tcyesno.yes then			|#800-180401.so
+|		lattr.print = false
+|	endif							|#233769.en
+								|#800-180401.eo
+								|#245204.sn
+	if ( lattr.lineno + tfacr000.blab ) > spool.pg.length then
+		page()
+		if lattr.lineno <= tfacr000.blop then 		|#247586.n
+			skip(tfacr000.blop - lattr.lineno + 1)
+		endif						|#247586.n
+	endif
+								|#245204.en
+|****************************** after.sort.cuno.rep.37 ***********************
+after.sort.cuno.rep.37:						|#233769.sn
+|* Aging Summary
+before.layout:
+|	if prnt.aging.yn <> tcyesno.yes then			|#800-180401.so
+|		lattr.print = false
+|	endif							|#233769.en
+								|#800-180401.eo
+								|#245204.sn
+	|* 5 extra because the layout is 5 lines long
+	if ( lattr.lineno + tfacr000.blab + 5 ) > spool.pg.length then
+		page()
+		if lattr.lineno <= tfacr000.blop then 		|#247586.n
+			skip(tfacr000.blop - lattr.lineno + 1)
+		endif						|#247586.n
+	endif
+								|#245204.en
+								
+								|#1572978.sn
+|***************************** after.sort.cuno.rep.38 ***********************
+after.sort.cuno.rep.38:
+before.layout:
+	if ( lattr.lineno + tfacr000.blab + total.lines ) > spool.pg.length then
+		page()
+		if lattr.lineno <= tfacr000.blop then 		
+				skip(tfacr000.blop - lattr.lineno + 1)
+		endif						
+							
+	endif
+|***************************** after.sort.cuno.rep.39 ***********************
+after.sort.cuno.rep.39:
+before.layout:
+	if ( lattr.lineno + tfacr000.blab + total.lines ) > spool.pg.length then
+		page()
+		if lattr.lineno <= tfacr000.blop then 		
+				skip(tfacr000.blop - lattr.lineno + 1)
+							
+		endif											
+							
+	endif	
+								|#1572978.en
+	
+
+|****************************** after.sort.cuno.rep.40 ***********************
+after.sort.cuno.rep.40:
+before.layout:
+ 	head.string = ""				
+								
+								|#1572978.sn
+|	if ( lattr.lineno + tfacr000.blab + total.lines) > spool.pg.length then|#1579620.o
+	if ( lattr.lineno + tfacr000.blab + total.lines + 5) > spool.pg.length then|#1579620.n
+		page()
+		if lattr.lineno <= tfacr000.blop then 		
+				skip(tfacr000.blop - lattr.lineno + 1)
+		endif										
+							
+	endif
+								|#1572978.en
+								|#1572978.sn
+|***************************** after.sort.cuno.rep.41 ***********************
+after.sort.cuno.rep.41:
+before.layout:
+	if ( lattr.lineno + tfacr000.blab + total.lines ) > spool.pg.length then
+		page()
+		if lattr.lineno <= tfacr000.blop then 		
+				skip(tfacr000.blop - lattr.lineno + 1)
+							
+		endif												
+							
+	endif
+|***************************** after.sort.cuno.rep.42 ***********************
+after.sort.cuno.rep.42:
+before.layout:
+|	if ( lattr.lineno + tfacr000.blab + total.lines) > spool.pg.length then |#1579620.o
+	if ( lattr.lineno + tfacr000.blab + total.lines + 2 ) > spool.pg.length then |#1579620.n
+		page()
+		if lattr.lineno <= tfacr000.blop then 		
+				skip(tfacr000.blop - lattr.lineno + 1)
+						
+		endif										
+							
+	endif	
+								|#1572978.en 	
+
+|****************************** field.tfacr313.htxt **************************
+field.htxt:							|#10015779.n
+before.print:
+	if ( lattr.lineno + tfacr000.blab ) > spool.pg.length then
+		pageno = pageno + 1
+		page()
+	endif
+	if ( pageno > 1 and lattr.lineno <= tfacr000.blop ) then
+		if lattr.lineno <= tfacr000.blop then 		|#247586.n
+			skip(tfacr000.blop - lattr.lineno + 1)
+		endif						|#247586.n
+	endif
+|****************************** field.tfacr313.htxt **************************
+field.ftxt:							|#10015779.n
+before.print:
+								|#245204.so
+|	if ( lattr.pageno > 1 and lattr.lineno <= tfacr000.blop ) then
+|		skip(tfacr000.blop - lattr.lineno + 1)
+|	endif
+								|#245204.eo
+	if ( lattr.lineno + tfacr000.blab ) > spool.pg.length then
+		pageno = pageno + 1
+		|page()
+		|* The function page() doesnot work correctly if there
+		|* is only text on one page. so the foll. lines are used
+		r.page.value = -1
+		r.skip.abs = r.foot.line - lattr.lineno
+		r.skip()
+		r.page()
+	endif
+								|#245204.sn
+	if ( lattr.pageno > 1 and lattr.lineno <= tfacr000.blop ) then
+		skip(tfacr000.blop - lattr.lineno + 1)
+	endif
+								|#245204.en
+
+|****************************** functions ************************************
+functions:
+
+function add.totals()
+{
+	tot1.open = tot1.open + amti.open
+	tot2.open = tot2.open + amth.open
+								|#800-180401.so
+|	tot3.open = tot3.open + amth.open.pctf			|#10015779.n
+								|#800-180401.eo
+}
+
+function form.total.lines.ccur()
+{
+	string	temp.str(200)
+	string	temp.var(30)
+	string	temp.format(9)
+
+	total.string1 = ""
+|	temp.format = "%A095," & tfacr200.ccur			|#200-87792.o
+	temp.format = "%A096," & tfacr200.ccur			|#200-87792.n
+	total.lines = 0
+								|#Reger_DB.so
+|	tfacr314.stml = stml					|#10015779.sn
+|	tfacr314.clan = clan					|#10015779.en
+|	tfacr314.varn = ltoe(13)
+|	set.min(tfacr314.srno)
+|	db.ge(ttfacr314)
+|	while ( not e ) and ( stml = stml ) and 		|#10015779.sn
+|	   ( tfacr314.clan = clan ) and		  		|#10015779.en
+|	   ( etol(tfacr314.varn) <= 16 )
+|		temp.str = ""
+|								|#10227170.sn
+|		if ( etol(tfacr314.varn) = 16 ) then
+|			temp.var = sprintf$(temp.format,tot1.open)
+|			if not isspace(temp.var) then
+|				temp.str = total.string1
+|				temp.str(tfacr314.scol;
+|				len(strip$(tfacr314.desc))) =
+|				strip$(tfacr314.desc)
+|				temp.str(tfacr314.sfld;
+|				len(strip$(tfacr314.form))) =
+|				strip$(temp.var)
+|				total.string1 = temp.str
+|				total.lines = 1
+|			endif
+|		else
+|			temp.var = ""
+|		endif
+|		db.next(ttfacr314)
+|	endwhile						|#Reger_DB.eo
+
+	select	tfacr314.*					|#Reger_DB.sn
+	from	tfacr314
+	where	tfacr314._index3 = {:stml, :clan}
+	and (tfacr314.varn = tfacr.varn.total.interest or
+	tfacr314.varn = tfacr.varn.cost or
+	tfacr314.varn = tfacr.varn.total.due or
+	tfacr314.varn = tfacr.varn.total.open)
+	order by tfacr314._index3
+	selectdo
+		temp.str = ""
+		if tfacr314.varn = tfacr.varn.total.open then
+			temp.var = sprintf$(temp.format,tot1.open)
+			if not isspace(temp.var) then
+				temp.str = total.string1
+								|#240041.so
+|				temp.str(tfacr314.scol;
+|				len(strip$(tfacr314.desc))) =
+|				strip$(tfacr314.desc)
+|				temp.str(tfacr314.sfld;
+|				len(strip$(tfacr314.form))) =
+|				strip$(temp.var)
+								|#240041.eo
+								|#240041.sn
+				temp.str(tfacr314.scol;
+					len.in.bytes(strip$(tfacr314.desc))) =
+					strip$(tfacr314.desc)
+				temp.str(tfacr314.sfld;
+					len.in.bytes(strip$(tfacr314.form))) =
+					strip$(temp.var)
+								|#240041.en
+				total.string1 = temp.str
+				total.lines = 1
+			endif
+		else
+			temp.var = ""
+		endif
+	endselect						|#Reger_DB.en
+	total.string1 = total.string1(1;ncls)			|#10015779.n
+}
+
+function form.total.lines.cust()
+{
+	string	temp.str(200)
+	string	temp.var(30)
+	string	temp.format(9)
+								|#800-180401.so
+|	string	temp.format.pctf(9)				|#10015779.n
+								|#800-180401.eo
+	total.string1 = ""
+|	temp.format = "%A095," & ccur.cust			|#200-87792.so
+|	temp.format.pctf = "%A095," & ccur.pctf			|#10015779.n
+								|#200-87792.eo
+
+	temp.format = "%A096," & ccur.cust			|#200-87792.sn
+								|#800-180401.so
+|	temp.format.pctf = "%A096," & ccur.pctf			|#200-87792.en
+								|#800-180401.eo
+	total.lines = 0
+								|#Reger_DB.so
+|	tfacr314.stml = stml					|#10015779.sn
+|	tfacr314.clan = clan					|#10015779.en
+|	tfacr314.varn = ltoe(13)
+|	set.min(tfacr314.srno)
+|	db.ge(ttfacr314)
+|	while ( not e ) and ( tfacr314.stml = stml ) and 	  |#10015779.n
+|	   ( tfacr314.clan = clan ) and				|#10015779.n
+|	   ( etol(tfacr314.varn) <= 16 )
+|		temp.str = ""
+|								|#10227170.sn
+|		if ( etol(tfacr314.varn) = 16 ) then
+|			if aging.pctf then
+|				temp.var = sprintf$(temp.format.pctf,tot3.open)
+|			else
+|				temp.var = sprintf$(temp.format,tot2.open)
+|			endif
+|			if not isspace(temp.var) then
+|				temp.str = total.string1
+|				temp.str(tfacr314.scol;
+|				len(strip$(tfacr314.desc))) =
+|				strip$(tfacr314.desc)
+|				temp.str(tfacr314.sfld;
+|				len(strip$(tfacr314.form))) =
+|				strip$(temp.var)
+|				total.string1 = temp.str
+|				total.lines = 1
+|			endif
+|		else
+|			temp.var = ""
+|		endif
+|		db.next(ttfacr314)
+|	endwhile
+								|#Reger_DB.eo
+	select	tfacr314.*					|#Reger_DB.sn
+	from	tfacr314
+	where	tfacr314._index3 = {:stml, :clan}
+	and (tfacr314.varn = tfacr.varn.total.interest or
+	tfacr314.varn = tfacr.varn.cost or
+	tfacr314.varn = tfacr.varn.total.due or
+	tfacr314.varn = tfacr.varn.total.open)
+	order by tfacr314._index3
+	selectdo
+	    temp.str = ""
+
+		if tfacr314.varn = tfacr.varn.total.open then
+|			if aging.pctf then			|#800-180401.so
+|				temp.var = sprintf$(temp.format.pctf,tot3.open)
+|			else					|#800-180401.eo
+			temp.var = sprintf$(temp.format,tot2.open)
+|			endif					|#800-180401.o
+			if not isspace(temp.var) then
+				temp.str = total.string1
+								|#240041.so
+|				temp.str(tfacr314.scol;
+|				len(strip$(tfacr314.desc))) =
+|				strip$(tfacr314.desc)
+|				temp.str(tfacr314.sfld;
+|				len(strip$(tfacr314.form))) =
+|				strip$(temp.var)
+								|#240041.eo
+								|#240041.sn
+				temp.str(tfacr314.scol;
+					len.in.bytes(strip$(tfacr314.desc))) =
+					strip$(tfacr314.desc)
+				temp.str(tfacr314.sfld;
+					len.in.bytes(strip$(tfacr314.form))) =
+					strip$(temp.var)
+								|#240041.en
+				total.string1 = temp.str
+				total.lines = 1
+			endif
+		else
+			temp.var = ""
+		endif
+	endselect						|#Reger_DB.en
+	total.string1 = total.string1(1;ncls)			|#10015779.n
+}
+								|#32974.sn
+function concat.address()
+{
+	|* Concatenates the last line of the address into U.S.
+	|* required format of City, State  Zip Code
+
+|	if not isspace(namf) then				|#118998.so
+|		namf = strip$(shiftl$(namf)) & ", " &
+|		cste & " " & strip$(shiftl$(pstc))
+|	else
+|		name = strip$(shiftl$(name)) & ", " &
+|		cste & " " & strip$(shiftl$(pstc))
+|	endif							|#118998.eo
+|#125647.sn
+|	if tfacr000.evrt = tcyesno.yes then			|#130065.so
+|		if not isspace(namf) then
+|			namf = strip$(shiftl$(namf)) & ", " &
+|			cste & " " & strip$(shiftl$(pstc))
+|		else
+|			name = strip$(shiftl$(name)) & ", " &
+|			cste & " " & strip$(shiftl$(pstc))
+|		endif
+|	endif							|#130065.eo
+	if tfacr000.evrt = tcyesno.no then			|#125647.en
+		tccom.dll4030.format.address(send.address,7,heco)|#118988.n
+	endif							|#125647.n
+}
+								|#32974.en
+|**************************** End Of Program **********************************|
+#ident "@(#)tfacr344011000  tfB52bsy02  nawaab  Rev.No. 1  08 Apr 02  bsp"

@@ -1,0 +1,223 @@
+|******************************************************************************
+|* ttcmcs122dll999  0  VRC B61O a  ext 
+|* RTS Function use in WMS
+|* JH Chen
+|* Jul 7 24 [18:08]
+|******************************************************************************
+|* Script Type: General Library
+
+
+
+
+|******************************************************************************
+
+table	twhinh200 
+table	twhinh220 
+
+#pragma used dll ottstpapihand
+#pragma used dll ottdllbw
+
+function extern string warehouse_order(
+	domain tcrefa i_kitlist,
+	domain tcitem i_item, 
+	long i_qty,
+	domain tccshp i_shipfrom.code, 
+	domain tcseri i_series,
+	domain tccshp i_shipto.code,
+	long i_date,
+	string rfid(20)
+	)
+{
+                DllUsage
+                Expl      : AFS to transfer WMS warehouse issue into InforLN Warehouse Order (MTR) 
+                Pre       : NA
+                Post      : NA
+                Input     :i_kitlist -> Input from CIG WMS inbound order
+                           i_item -> RTS Item
+						   i_qty -> RTS Qty
+                Output :
+                                o.error -> Error Msg
+
+                Return  : Warehouse Order Running Number 
+                EndDllUsage
+               
+                string	pr.device(8),orno(10) 
+				domain tcmcs.str100 o.error
+				domain tcdate pddt
+
+                o.error = ""
+    			pr.device = "DOCUMENT"
+               
+				
+				| *******Easy Entry Warehousing Order******* |
+
+				if isspace(rfid) then
+ 					return("InforLN: No RFID Found")
+				else
+					if isspace(i_kitlist) then
+						return("InforLN: No Kitlist Found")
+					else
+
+						select whinh200.orno
+						from whinh200
+						where whinh200.refe = :i_kitlist
+						selectdo
+							orno = trim$(whinh200.orno)
+							
+						selectempty
+							orno = ""
+						endselect
+
+
+						select whinh220.orno
+						from whinh220
+						where whinh220.refe = :rfid and whinh220.orno = :orno  
+						selectdo
+							return("InforLN: This Rfid already scanned")
+							
+						selectempty
+							stpapi.form.command("whinh2100m000", 5, "start.easy.order.entry", o.error)
+													
+								if not isspace(o.error) then
+									return(o.error)
+													
+										
+									else
+														
+														
+										stpapi.put.field("whinh2202m000", "order.number", orno)
+										stpapi.put.field("whinh2202m000", "order.origin", str$(72))
+										stpapi.put.field("whinh2202m000", "item.segment.1", "         ")
+										stpapi.put.field("whinh2202m000", "item.segment.2",str$(i_item))
+										stpapi.put.field("whinh2202m000", "qty.storage.unit", str$(i_qty))
+										stpapi.put.field("whinh2202m000", "shipfrom.code", str$(i_shipfrom.code))
+										stpapi.put.field("whinh2202m000", "item",str$(i_item))
+										stpapi.put.field("whinh2202m000", "shipto.code", str$(i_shipto.code))
+										stpapi.put.field("whinh2202m000", "shipto.loca", "")
+										stpapi.put.field("whinh2202m000", "series", str$(i_series))	
+										if i_date > 0 then 		
+										stpapi.put.field("whinh2202m000", "delivery.date", str$(i_date))
+										stpapi.put.field("whinh2202m000", "receipt.date", str$(i_date))
+										endif
+										stpapi.put.field("whinh2202m000", "order.type", str$("W01"))
+										stpapi.put.field("whinh2202m000", "order.ref", i_kitlist)
+										stpapi.put.field("whinh2202m000", "ord.line.ref", rfid)
+										
+										stpapi.set.report("whinh2202m000", "rwhinh220211000", pr.device, o.error)
+										if not isspace(o.error) then
+											return(o.error)
+										else
+											stpapi.form.command("whinh2202m000", 5, "exec.cont.process", o.error)
+											if not isspace(o.error) then
+											return(o.error)
+											else
+												stpapi.end.session("whinh2202m000",o.error)
+												stpapi.end.session("whinh2100m000",o.error)
+												if not isspace(o.error) then
+												return(o.error)
+												else
+													select whinh200.orno
+													from whinh200
+													where whinh200.refe = :i_kitlist
+													group by whinh200.orno
+													selectdo
+														o.error = whinh200.orno
+													selectempty
+														o.error = "No return! Please call InforLN Supportor"
+													endselect
+
+													return(o.error)
+
+												endif
+											endif
+										endif
+
+					
+
+									endif
+						
+
+							
+						endselect
+
+
+						
+							endif	
+				endif
+	return(o.error)
+}
+
+
+
+function extern string RemoveRTS(
+	string rfid(20),
+	domain tcorno i_order,
+	domain tcpono i_pono,
+	domain tcpono i_seqn
+	)
+{
+
+	domain tcmcs.str100 o.message
+	long ret
+	long s_pono,s_seqn,s_oset
+
+	if isspace(rfid) then	
+		return("No rfid Found") 
+	else
+		if isspace(i_order) then	
+			return("No order number Found") 
+		
+		else
+			select whinh220.pono, whinh220.seqn,whinh220.oset
+			from whinh220
+			where whinh220.refe = :rfid and whinh220.orno = :i_order 
+			|as set with 1 rows
+			selectdo
+				s_pono = whinh220.pono
+				s_seqn = whinh220.seqn
+				s_oset = whinh220.oset
+
+				stpapi.put.field("whinh2100m100", "whinh200.oorg", "72")
+				stpapi.put.field("whinh2100m100", "whinh200.orno", str$(i_order))
+				stpapi.put.field("whinh2100m100", "whinh200.oset", str$(s_oset))
+				ret = stpapi.find("whinh2100m100", o.message)
+				if ret <> 1 then
+						o.message = i_order & str$(s_oset)
+				else
+					ret = stpapi.mark("whinh2100m100", o.message) 
+					if ret then
+
+						stpapi.put.field("whinh2120m000", "whinh220.pono", str$(s_pono))
+						stpapi.put.field("whinh2120m000", "whinh220.seqn", str$(s_seqn))
+						ret = stpapi.find("whinh2120m000", o.message)
+
+						
+						if ret <> 1 then
+							o.message = "Line Order not found"
+						else
+
+						| stpapi.get.field("whinh2120m000", "whinh220.refe",o.message)
+							ret = stpapi.delete("whinh2120m000", true, o.message) 
+							if not ret then 
+								stpapi.recover("whinh2120m000",  o.message) 
+								stop()
+							else
+
+								o.message = i_order & "|" & str$(s_pono) & "|" & str$(s_oset)
+							endif
+						endif
+					endif
+
+				endif
+			
+			selectempty
+				return("InforLN: This rfid not found in InforLN")
+			endselect
+		endif
+	endif
+	
+
+	
+	return(o.message)
+
+}

@@ -1,0 +1,207 @@
+|******************************************************************************
+|* tiedm9999m000  0  VRC B61C a  cus 
+|* Import Purchase Order (Customize)
+|* CC HNG                                                                                         
+|* 
+|******************************************************************************
+|* Main table tdpur410 Purchase Order Line Form
+|******************************************************************************
+                                                                                
+|****************************** declaration section ***************************
+declaration:
+#include <bic_dam>
+#include <bic_cmf>
+
+#pragma used dll ottdllbw
+#pragma	used dll ottstpapihand	| Baan API Handler
+#include <bic_desktop>
+
+	table   ttdpur400	| Purchase Order
+	table   ttdpur401	| Purchase Order Lines
+    table   ttdpur419
+
+    extern  domain  tcitem          prod_order
+    extern  domain  tccom.bpid      business_partner,buy_form_business_Partner
+    extern  domain  tccom.cadr      business_address
+    extern  domain  tcdate          order_date,plan_date
+
+|****************************** program section ********************************
+before.program:
+	
+
+	import("tdpur400.orno", prod_order)
+    import("tdpur400.sfbp", business_partner)
+    import("tdpur400.sfad", business_address)
+    import("tdpur400.odat", order_date)
+    import("tdpur400.ddat", plan_date)
+	import("tdpur400.otbp", buy_form_business_Partner)
+
+
+|****************************** group section **********************************
+
+group.1:
+init.group:
+   get.screen.defaults()
+   
+
+|****************************** functions **************************************
+Functions:
+
+ function extern upload.request()
+ {		
+ 	|****************** Upload File into Server *************************
+ 	long	ret, ret1, ret2, input.fp,check1,str.no, i, pos.1,count
+ 	string	filename2(200),curr.line(2048), temp.txt(250), instr(1)
+ 	domain  tcmcs.str100	o.message, o.error
+	domain  tcmpnr fmpn
+	domain  tcmcs.cmnf fmanufacturer
+	domain	tcqrd1 fqty
+	domain  tcitem fitem
+	domain	tcmcs.str100	filename
+
+ 	ret1 = 0
+
+ 	filename2 = "${BSE}/tmp_import/Upload_Purchase_order.csv"
+
+	| Check user using WebUI or WebTop
+	if get.ui.mode() = 1 then
+		ret2 =  client2server("", filename2, false, false,true)
+	else
+		ret2 =  client.upload.file(filename2) 
+	endif
+
+	if ret2 <> 0 then	| Cancel Upload data
+		stop()
+
+	endif
+
+
+	temp.txt = trim$(get.local.filename())
+	str.no = len(temp.txt)
+
+	for i = 1 to str.no
+	instr = temp.txt(i;1)
+	
+	if instr = "\" then
+		pos.1 = i  
+	endif
+	endfor
+	
+ 	filename = temp.txt(pos.1+1)
+	
+ 	input.fp = seq.open(strip$(filename2),"rt")
+
+ 	if input.fp < 1 then
+ 		message("File Cannot be uploaded.")
+ 		return
+
+    else
+		select tdpur400.*
+		from tdpur400
+		where tdpur400.orno = :prod_order
+		as set with 1 rows
+		selectdo
+			if str$(tdpur400.hdst) = str$("25") then
+				message("Import Failed: Unable to change closed PO!")
+				stop()
+			endif
+		endselect	
+
+        seq.rewind(input.fp)
+	
+        ret1 = seq.gets(curr.line, 2048, input.fp)  |0 = success
+		
+		|***** Remove all Purchase Order Line (ttdpur401) *****
+		select tdpur401.*
+		from tdpur401
+		where tdpur401.orno = :prod_order
+		selectdo
+			stpapi.put.field("tdpur4100m000", "tdpur400.orno", prod_order)
+			ret = stpapi.find("tdpur4100m000", o.message)
+			if ret = 1 then 
+				ret = stpapi.synchronize.dialog("tdpur4100m000", "add",  o.error) 
+				if not isspace(o.error) then
+					stpapi.end.session("tdpur4100m000", o.message)
+					message (" delete %s - %s", o.message , o.error)
+						stop()
+				endif
+
+				if ret = 1 then 
+					ret = stpapi.delete("tdpur4101m000", true, o.error) 
+					if not ret then 
+						ret = stpapi.recover("tdpur4100m000",  o.error) 
+						message("%s" &  o.error)
+						stop()
+					endif
+				endif 
+			endif
+		selectempty
+		endselect
+        count = 0
+		create.progress.indicator ("Purchase Order Line Uploading...", PROGRESS.BAR + PROGRESS.STOP)	
+		
+		while ret1 = 0
+		
+			change.progress.indicator (count,"%")
+                | Check the Column have more 4 or not
+				check1 = string.scan(curr.line, "%s,%f,%s,%s",fitem,fqty,fmpn,fmanufacturer)   
+                if check1 <> 4 then
+					if check1 <> 2 then
+						message("Invalid Fields.\n\nPlease check your field in your upload file.")
+						stop()
+					endif 
+                endif 
+
+                |***** Insert Purchase Order Line (ttdpur401) *****
+               	stpapi.put.field("tdpur4100m000", "tdpur400.orno", prod_order)
+				ret = stpapi.find("tdpur4100m000", o.message)
+				if ret = 1 then	
+					| stpapi.get.field("tdpur4100m000","tdpur400.otbp",buy_form_business_Partner)	
+					ret = stpapi.synchronize.dialog("tdpur4100m000","add", o.message) 
+					if not isspace(o.message) then
+						stpapi.end.session("tdpur4100m000", o.message)
+						message ("synchronize Insert %s" , o.message)
+						stop()
+					endif
+
+					stpapi.put.field("tdpur4101m000", "tdpur401.item",str$(fitem))
+					stpapi.put.field("tdpur4101m000", "tdpur401.item.segment.1", "         ")
+					stpapi.put.field("tdpur4101m000", "tdpur401.item.segment.2",str$(fitem))
+					stpapi.put.field("tdpur4101m000", "tdpur401.qoor",str$(fqty))
+					if not isspace(fmpn) then
+					stpapi.put.field("tdpur4101m000", "tdpur401.mpnr",str$(fmpn))
+					stpapi.put.field("tdpur4101m000", "tdpur401.cmnf",str$(fmanufacturer))
+					endif
+					| stpapi.put.field("tdpur4101m000", "tdpur401.cuqp",fuom)
+					| stpapi.put.field("tdpur4101m000", "tdpur419.curq",fuom)
+					ret = stpapi.insert("tdpur4101m000", true, o.message) 
+
+
+
+					if not ret then 
+						ret = stpapi.recover("tdpur4101m000", o.error) 
+						stpapi.end.session("tdpur4101m000", o.message)
+						stpapi.end.session("tdpur4100m000", o.message)
+						message ("Insert %s - %s", o.message , o.error)
+						stop()
+					endif 
+					| stpapi.end.session("tdpur4101m000") 
+					| stpapi.end.session("tdpur4100m000") 
+
+					
+				endif
+
+				 ret1 = seq.gets(curr.line, 2048, input.fp)
+            	count = count + 1
+	    endwhile
+		stpapi.end.session("tdpur4101m000") 
+		stpapi.end.session("tdpur4100m000") 
+
+		message ("Order line Added: %s" , prod_order)
+		ret2 = seq.close(input.fp)
+		destroy.progress.indicator()
+	endif
+
+
+ }
+	

@@ -1,0 +1,124 @@
+|******************************************************************************
+|* ttcmcs122dll999  0  VRC B61O a  ext 
+|* RTS Warehouse Order
+|* JH Chen
+|* Jul 7 24 [18:08]
+|******************************************************************************
+|* Script Type: General Library
+|******************************************************************************
+
+table	twhinh200 
+
+#pragma used dll ottstpapihand
+#pragma used dll ottdllbw
+
+function extern string warehouse_order(
+	domain tcrefa i_kitlist,
+	domain tcitem i_item, 
+	long i_qty,
+	domain tccshp i_shipfrom.code, 
+	domain tcseri i_series,
+	domain tccshp i_shipto.code
+	)
+{
+                DllUsage
+                Expl      : AFS to transfer WMS warehouse issue into InforLN Warehouse Order (MTR) 
+                Pre       : NA
+                Post      : NA
+                Input     :i_kitlist -> Input from CIG WMS inbound order
+                           i_item -> RTS Item
+						   i_qty -> RTS Qty
+                Output :
+                                o.error -> Error Msg
+
+                Return  : Warehouse Order Running Number 
+                EndDllUsage
+               
+                string	pr.device(8),orno(10) 
+				domain tcmcs.str100 o.error
+				domain tcdate pddt
+
+                o.error = ""
+    			pr.device = "D"
+               
+				
+				| *******Easy Entry Warehousing Order******* |
+
+				if isspace(i_kitlist) then
+ 					return("No Kitlist Found")
+				else
+
+					select whinh200.orno,whinh200.pddt
+					from whinh200
+					where whinh200.refe = :i_kitlist
+					selectdo
+						orno = trim$(whinh200.orno)
+						pddt = whinh200.pddt
+					selectempty
+						orno = ""
+					endselect
+
+					
+					stpapi.form.command("whinh2100m000", 5, "start.easy.order.entry", o.error)
+					
+					if not isspace(o.error) then
+						return(o.error)
+					
+		
+					else
+					
+						stpapi.put.field("whinh2202m000", "order.number", orno)
+						stpapi.put.field("whinh2202m000", "order.origin", str$(72))
+						stpapi.put.field("whinh2202m000", "item.segment.1", "         ")
+						stpapi.put.field("whinh2202m000", "item.segment.2",str$(i_item))
+						stpapi.put.field("whinh2202m000", "qty.storage.unit", str$(i_qty))
+						stpapi.put.field("whinh2202m000", "shipfrom.code", str$(i_shipfrom.code))
+						stpapi.put.field("whinh2202m000", "item",str$(i_item))
+						stpapi.put.field("whinh2202m000", "shipto.code", str$(i_shipto.code))
+					    stpapi.put.field("whinh2202m000", "shipto.loca", "")
+						stpapi.put.field("whinh2202m000", "series", str$(i_series))
+						| stpapi.put.field("whinh2202m000", "delivery.date", str$(pddt))
+						| stpapi.put.field("whinh2202m000", "delivery.date.time", str$(pddt))
+						stpapi.put.field("whinh2202m000", "delivery.date", str$("1521121046"))
+						| stpapi.put.field("whinh2202m000", "delivery.date", str$("14 07 2024"))
+						| stpapi.put.field("whinh2202m000", "delivery.date.time", str$("17:30:00"))
+						stpapi.put.field("whinh2202m000", "order.type", str$("W01"))
+						stpapi.put.field("whinh2202m000", "order.ref", i_kitlist)
+						
+
+						
+						stpapi.set.report("whinh2202m000", "rwhinh220211000", pr.device, o.error)
+						if not isspace(o.error) then
+							return(o.error)
+						else
+							stpapi.form.command("whinh2202m000", 5, "exec.cont.process", o.error)
+							if not isspace(o.error) then
+							return(o.error)
+							else
+								stpapi.end.session("whinh2202m000",o.error)
+								if not isspace(o.error) then
+								| return(str$(utc.num()))
+								return(o.error)
+								else
+									select whinh200.orno
+									from whinh200
+									where whinh200.refe = :i_kitlist
+									group by whinh200.orno
+									selectdo
+										o.error = whinh200.orno
+									selectempty
+										o.error = "No return! Please call InforLN Supportor"
+									endselect
+									return (str$(inputstr.to.utc("15/03/2018", "%D(%02d/%02m/%04Y)", "09:37:53 am", "%U(%02h%x%02m%x%025 %a)")))
+									| return(str$((DAY_NUMBER(DATE, "15/03/2018") - DAY_NUMBER(DATE, "01-01-1970")) * 86400))
+| return(str$(utc.num()))
+									| return(o.error)
+
+								endif
+							endif
+						endif
+					endif
+				endif
+
+				return (sprintf$("%u(%02h:%02m:%02tt)",pddt))
+}

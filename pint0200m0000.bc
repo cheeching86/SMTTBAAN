@@ -1,0 +1,90 @@
+|******************************************************************************
+|* txint0200m000  0  VRC B61O a  ext 
+|* Extract Master Data - Json
+|* Installation user                                                                                                                                                                                                                                                                                                                                                                                               
+|* 2023-05-25
+|******************************************************************************
+|* Form Type 4
+|******************************************************************************
+                                                                                
+|****************************** declaration section ***************************
+declaration:
+|#include <bic_json>
+#include <bic_desktop>
+#pragma used dll otxintdll0000
+|#pragma used dll ottdllbw
+	extern	domain	tcmcs.str132m		form.file
+	extern	domain	tcmcs.str132m		form.server.path
+	extern	domain	tcmcs.long			form.split
+|****************************** program section ********************************
+before.program:
+	form.file = "${BSE}\appdata\Sujeet\Input"
+	form.server.path = "${BSE}\appdata\Sujeet\Output\"
+
+|****************************** group section **********************************
+
+group.1:
+init.group:
+	get.screen.defaults()
+
+|****************************** choice section **********************************
+choice.cont.process:
+on.choice:
+	if read.single.file() then
+		message("Data Uploaded Successfully")
+	endif	
+choice.cont.browse:
+on.choice:
+	browse()
+
+functions:
+
+function browse()
+{
+| 	domain	tcmcs.str132m		fname
+| 	mess("tigenstring", 0, "Select The File . . .")
+| 	if seq.open.dialog.local( false, "", "","Text Files(*.txt)|*.txt|All File(*.*)|*.*", fname ) > 0 then
+| 		form.file = creat.tmp.file$(bse.tmp.dir$())
+| 		client2server(fname,form.file ,true)
+| 	|		display("form.server.path")
+| 		mess("tigenstring", 0, "Success . . .")
+| 	else
+| 		mess("tigenstring", 0, "Cancelled . . .")
+| 	endif
+| 	display.all()
+| 		
+}
+
+
+function boolean read.single.file()
+{
+	long	file_pointer
+	file_pointer = seq.open(form.file,"r")
+	if file_pointer < 0 then
+		message("Error in Opening File")
+		seq.close(file_pointer)
+		return(false)
+	else
+		read.data.from.file(file_pointer)
+		seq.close(file_pointer)
+	endif
+	return(true)
+}
+
+function read.data.from.file
+			(
+				long	i.file.pointer
+			)
+{
+	string	buffer(100)
+	domain	tcmcs.str10	i.table.code
+	long			out.json
+	
+	domain	tcmcs.str132m	file.name
+	
+	
+	while seq.gets(buffer,100,i.file.pointer) >=0 
+		string.scan(buffer,"%s",i.table.code)
+		out.json = txint.dll0010.get.data.from.specific.table(i.table.code,form.server.path,form.split)
+	endwhile
+}

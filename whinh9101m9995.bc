@@ -1,0 +1,119 @@
+|******************************************************************************
+|* ttcmcs122dll999  0  VRC B61O a  ext 
+|* Easy Entry Warehousing Order
+|* CC HNG
+|* Jul 22 2024 
+|******************************************************************************
+|* Script Type: General Library
+|******************************************************************************
+
+table	twhinh200 
+table	ttisfc001 
+
+#pragma used dll ottstpapihand
+#pragma used dll ottdllbw
+
+function extern string easy.entry.wh.order(
+	domain tcrefa  str_prod_no,
+	domain tcitem str_item, 
+	long int_qty,
+	domain tccshp str_shipfrom.code, 
+	domain tccshp str_shipto.code,
+	domain tcseri str_series,
+	domain tccotp str_order.type,
+	long int_date
+	)
+{
+                string	pr.device(8),str_orno(10) |,ship_to(10)
+				domain tcmcs.str100 o.error
+
+                o.error = ""
+    			pr.device = "D"
+               
+				
+				| *******Easy Entry Warehousing Order******* |
+
+				if isspace(str_prod_no) then
+ 					return("No Production Order Found")
+				else
+
+					select whinh200.orno
+					from whinh200
+					where whinh200.refe = :str_prod_no
+					selectdo
+						str_orno = trim$(whinh200.orno)
+					selectempty
+						str_orno = ""
+					endselect
+
+					if isspace(str_shipto.code) then
+						select tisfc001.line.no
+						from tisfc001
+						where tisfc001.pdno = :str_prod_no
+						selectdo
+							str_shipto.code = trim$(tisfc001.line.no)
+						selectempty
+							return("Production Order's Warehouse not exist!")
+						endselect
+					endif
+					
+					stpapi.form.command("whinh2100m000", 5, "start.easy.order.entry", o.error)
+					
+					if not isspace(o.error) then
+						return(o.error)
+					else
+						stpapi.put.field("whinh2202m000", "order.number", str_orno)
+						stpapi.put.field("whinh2202m000", "order.origin", str$(72))
+						stpapi.put.field("whinh2202m000", "item.segment.1", "         ")
+						stpapi.put.field("whinh2202m000", "item.segment.2",str$(str_item))
+						stpapi.put.field("whinh2202m000", "qty.storage.unit", str$(int_qty))
+						stpapi.put.field("whinh2202m000", "shipfrom.code", str$(str_shipfrom.code))
+						stpapi.put.field("whinh2202m000", "item",str$(str_item))
+						stpapi.put.field("whinh2202m000", "shipto.code", str$(str_shipto.code))
+					    stpapi.put.field("whinh2202m000", "shipto.loca", "")
+						stpapi.put.field("whinh2202m000", "series", str$(str_series))	
+						if int_date > 0 then 		
+							stpapi.put.field("whinh2202m000", "delivery.date", str$(int_date))
+							stpapi.put.field("whinh2202m000", "receipt.date", str$(int_date))
+						endif
+						stpapi.put.field("whinh2202m000", "order.type", str$(str_order.type))
+						stpapi.put.field("whinh2202m000", "order.ref", str_prod_no)
+						
+						stpapi.set.report("whinh2202m000", "rwhinh220211000", pr.device, o.error)
+						if not isspace(o.error) then
+							return(o.error)
+						else
+							stpapi.form.command("whinh2202m000", 5, "exec.cont.process", o.error)
+							if not isspace(o.error) then
+							return(o.error)
+							else
+								if not isspace(o.error) then
+									fn_Return(o.error)
+								else
+									select whinh200.orno
+									from whinh200
+									where whinh200.refe = :str_prod_no
+									group by whinh200.orno
+									selectdo
+										o.error = whinh200.orno
+									selectempty
+										o.error = "No return! Please call InforLN Supportor"
+									endselect	
+									fn_Return(o.error)
+								endif
+							endif
+						endif
+					endif
+				endif
+		
+
+}
+
+function extern string fn_Return(
+	string strReturn
+	)
+{
+	stpapi.end.session("whinh2202m000",o.message)
+	stpapi.end.session("whinh2100m000",o.message)
+	return(strReturn)
+}

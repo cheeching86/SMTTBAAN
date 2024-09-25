@@ -1,0 +1,154 @@
+|******************************************************************************
+|* ttcmcs122dll999  0  VRC B61O a  ext 
+|* Warehouse receipt
+|* CC Hng
+|* Jul 8 24 [10:02]
+|******************************************************************************
+|* Script Type: General Library
+|******************************************************************************
+
+table	twhinh310
+table	twhinh312
+
+#include <bic_dam>
+#include <bic_desktop>
+#include <bic_cmf>
+
+#pragma used dll ottstpapihand
+#pragma used dll ottdllbw
+
+function extern string warehouse_order(
+	domain whinh.pksp i_packingslip,
+	domain whinh.shpm i_rcnumber,
+	string i_po_number(9),
+	string i_order_number(5),
+	string i_business_partner_lot(50),
+	long i_inventory_date,
+	long i_receive_qty,
+	domain tccuni i_uom
+	)
+{
+				string	pr.device(8),rcno(10)
+				domain tcmcs.str100 o.message
+				long ret
+
+				o.message = ""
+				pr.device = "D"
+
+				| *******Easy Entry Warehousing Order******* |
+				select whinh310.rcno
+				from whinh310
+				where whinh310.rcno = :i_rcnumber
+				|as set with 1 rows |will return blank
+				selectdo
+					rcno = trim$(whinh310.rcno)
+
+					stpapi.put.field("whinh3512m000", "whinh310.rcno", rcno)
+					ret = stpapi.find("whinh3512m000", o.message)
+					if ret = 1 then
+						stpapi.put.field("whinh3512m000", "easy.number", str$(i_po_number))
+						stpapi.put.field("whinh3512m000", "easy.line", str$(i_order_number))
+						stpapi.put.field("whinh3512m000", "whinh310.dino", i_packingslip)
+
+						ret = stpapi.update("whinh3512m000", true, o.message)
+						if not isspace(o.message) then
+							stpapi.end.session("whinh3512m000", o.message)
+							return("easy.number=》 " & o.message)
+						endif
+
+						if not ret then
+							ret = stpapi.recover("whinh3512m000", o.message)
+						endif
+					endif
+
+					stpapi.form.command("whinh3512m000", 5, "option.receive", o.message)
+					if not isspace(o.message) then
+						stpapi.end.session("whinh3512m000", o.message)
+						return("option.receive=》 " & o.message)
+					endif
+					| return (edit.receipt.line(rcno,i_business_partner_lot,i_receive_qty,i_uom,i_inventory_date))
+					| stpapi.get.field("whinh3512m000","whinh312.rcln",rcln)|Get order line
+
+					| stpapi.put.field("whinh3112s000", "whinh312.rcno", rcno)
+					| stpapi.put.field("whinh3112s000", "whinh312.rcln", str$(rcln))
+					| ret = stpapi.find("whinh3112s000", o.message) 
+
+					| if ret then 
+					| 	stpapi.put.field("whinh3112s000", "whinh312.ltbp", str$(i_business_partner_lot))|Business Partner Lot
+					| 	stpapi.put.field("whinh3112s000", "whinh312.qrcr", str$(i_receive_qty))|Received Qty
+					| 	stpapi.put.field("whinh3112s000", "whinh312.qrec", str$(i_receive_qty))|In Inventory Unit Qty
+					| 	stpapi.put.field("whinh3112s000", "whinh312.rcun", str$(i_uom))|UOM
+					| 	stpapi.put.field("whinh3112s000", "whinh312.idat", str$(i_inventory_date))|Inventory Date
+					| 	ret = stpapi.update("whinh3112s000", true, o.message) 
+
+					| 	if not isspace(o.message) then
+					| 		stpapi.end.session("whinh3112s000", o.message)
+					| 		stpapi.end.session("whinh3512m000", o.message)
+					| 		return("sub.update=》 " & o.message)
+					| 	endif
+					| endif 
+					| stpapi.end.session("whinh3112s000", o.message)
+					| stpapi.end.session("whinh3512m000", o.message)
+					| return(rcno)
+					
+				selectempty
+					| new receipt
+					rcno = "RC"
+
+					stpapi.form.command("whinh3512m000", 5, "option.new.receipt", o.message)
+					stpapi.put.field("whinh3512m000", "whinh310.rcno", rcno)
+					stpapi.put.field("whinh3512m000", "whinh310.cwar", str$("RAW"))
+					stpapi.put.field("whinh3512m000", "whinh310.sfbp", "GS0000001")
+					stpapi.put.field("whinh3512m000", "whinh310.dino", i_packingslip)
+					stpapi.put.field("whinh3512m000", "easy.number", str$(i_po_number))
+					stpapi.put.field("whinh3512m000", "easy.line", str$(i_order_number))
+					
+					ret = stpapi.insert("whinh3512m000", true, o.message)
+
+					stpapi.form.command("whinh3512m000", 5, "option.receive", o.message)
+					if not isspace(o.message) then
+						stpapi.end.session("whinh3512m000", o.message)
+						return(o.message)
+					endif
+					stpapi.get.field("whinh3512m000","whinh310.rcno",rcno)				  
+
+				endselect			               
+				return (edit.receipt.line(rcno,i_business_partner_lot,i_receive_qty,i_uom,i_inventory_date))  
+}
+
+function extern string edit.receipt.line(
+	string rcno(10),
+	string i_business_partner_lot(50),
+	long i_receive_qty,
+	domain tccuni i_uom,
+	long i_inventory_date
+	)
+{
+		string	rcln(10)
+		string o.message(500)
+		long ret
+		stpapi.get.field("whinh3512m000","whinh312.rcln",rcln)|Get order line
+
+		stpapi.put.field("whinh3112s000", "whinh312.rcno", rcno)
+		stpapi.put.field("whinh3112s000", "whinh312.rcln", str$(rcln))
+
+		ret = stpapi.find("whinh3112s000", o.message) 
+
+		if ret then 
+			stpapi.put.field("whinh3112s000", "whinh312.ltbp", str$(i_business_partner_lot))|Business Partner Lot
+			stpapi.put.field("whinh3112s000", "whinh312.qrcr", str$(i_receive_qty))|Received Qty
+			stpapi.put.field("whinh3112s000", "whinh312.qrec", str$(i_receive_qty))|In Inventory Unit Qty
+			stpapi.put.field("whinh3112s000", "whinh312.rcun", str$(i_uom))|UOM
+			stpapi.put.field("whinh3112s000", "whinh312.idat", str$(i_inventory_date))|Inventory Date
+			ret = stpapi.update("whinh3112s000", true, o.message) 
+
+			if not isspace(o.message) then
+				stpapi.end.session("whinh3112s000", o.message)
+				stpapi.end.session("whinh3512m000", o.message)
+				return("sub.update=》 " & o.message)
+			endif
+		endif 
+		stpapi.end.session("whinh3112s000", o.message)
+		stpapi.end.session("whinh3512m000", o.message)
+		return(rcno)
+}

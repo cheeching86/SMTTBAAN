@@ -1,0 +1,318 @@
+|******************************************************************************
+|* Title	: rush <looking for a better name>!!!!
+|* Author	: MohanaVamsi Potluru <vamsi@who.net>
+|* Co-Author	: Praveen Ambekar <ambekarpraveen@yahoo.com>
+|* Date		: 2001-12-05
+|******************************************************************************
+|* Script Type	: dll
+|* Description	: This dll is used by the 3GL program "main". 
+|*    		  This program makes it possible to extend standard Baan events
+|*		  by either suppressing or making them conditional.
+|* Category	: Utility
+|* License	:
+|* Copyright 2001 by MohanaVamsi Potluru and Praveen Ambekar
+|* 
+|* All Rights Reserved 
+|* 
+|* Permission to use, copy, modify, and distribute this software and its
+|* documentation for any purpose and without fee is hereby granted,
+|* provided that the above copyright notice appear in all copies and that
+|* both that copyright notice and this permission notice appear in
+|* supporting documentation. 
+|* 
+|* MohanaVamsi Potluru, Praveen Ambekar and Baanboard.com DISCLAIM ALL 
+|* WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING ALL 
+|* IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO EVENT SHALL 
+|* MohanaVamsi Potluru nor Praveen Ambekar nor Baanboard.com BE LIABLE 
+|* FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES 
+|* WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+|* WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER 
+|* TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE
+|* OR PERFORMANCE OF THIS SOFTWARE.
+|******************************************************************************
+
+|****************************** PROGRAM     SECTION ***************************
+	DllUsage
+	Expl.:	This program is useful to extend the baan standard functionality
+	        when sources are not available. This can be used to customize
+	        standard session, prevent certain standard code from executing,
+	        execute additional code before or after a baan section.
+	        It can also be used to conditionally execute baan code
+	        or customized code depending on certain conditions. In short
+	        the possibilities are unlimited.
+	        
+	        This program makes use of the dll tccomdllrush to obtain the list
+	        of extern functions available in the standard object. The dll will
+	        first identify the VRC from which the object has to be picked up and 
+	        then runs a bic_info on the object to obtain the list of the extern
+	        functions.Once the list of extern functions are available, it is
+	        written in the file requested by the user.
+	        
+	Pre:	None
+	Post:	None
+	Input:	"Parent object" and "file name to be created" should be
+		inputted when prompted. 
+	Output:	It will create a file with the file name given by the user.
+	        This file will have all the extern functions available in the
+	        standard object (including those created for differnt event sections)
+	        The user can use this file as an input to create his own customized
+	        script.
+
+	Todo: Someone to write more extensive documentation for this. 
+
+	|--------------------------------------------------------
+	Examples:
+	|--------------------------------------------------------
+	EndDllUsage
+
+
+		long	err
+		long	depth
+		long	ret
+
+		string	longline$(4096)
+		string	directories(80,100)
+		string	pp(2)
+		string	mmm(3)
+		string	script(9)
+		string	parent.object(16)
+
+	#define	RETIFNOTOK(...)
+^	err = ...
+^	if err then
+^		return(err)
+^	endif
+
+function extern long tccom.dllrush.get.parent.functions(
+						string	i.parent.object(16),
+					ref	string	funcs(,),
+					ref	string	o.error)
+{
+		string	dummy.path(256)
+
+	dummy.path = ""
+|Length of the funcs string should be 80. How many functions per object is
+|your call. Just make sure that the "index out of dims" does not strike :-).
+	parent.object = i.parent.object
+	init()
+	RETIFNOTOK(get.vrc.directory.paths(o.error))
+	RETIFNOTOK(find.parent.object(true, dummy.path, funcs, o.error))
+	return(0)
+}
+
+function extern long tccom.dllrush.find.parent.object(
+						string	i.parent.object(16),
+					ref	string	o.path,
+					ref	string	o.error)
+{
+		string	dummy.func(256,1)
+
+	dummy.func(1, 1) = ""
+	parent.object = i.parent.object
+	init()
+	RETIFNOTOK(get.vrc.directory.paths(o.error))
+	ret = find.parent.object(false, o.path, dummy.func, o.error)
+	if ret then
+		return(ret)	| Search failed!
+	endif
+	return(0)
+}
+
+function init()
+{
+		long	i
+
+	pp = strip$(parent.object(2; 2))		| package
+	mmm = strip$(parent.object(4; 3))		| module
+	script = strip$(parent.object(7; 9))		| script
+	depth = 0
+	for i = 1 to 100
+		directories(1, i) = ""
+	endfor
+	longline$ = ""
+}
+
+function long get.vrc.directory.paths(ref string o.error)
+{
+		long	conf.fp
+		string	conf.file(256)
+
+	conf.file = bse.dir$() & "/lib/fd" & bse.release$() & 
+^				"." & strip$(shiftl$(curr.pacc$))
+	conf.fp = seq.open(conf.file, "r")
+	if conf.fp < 1 then
+		o.error = "Error opening configuration file for reading"
+		if conf.fp < 0 then
+			return(conf.fp)	|return system error
+		else
+			return(-1)	|pseudo code because 0 indicates success
+		endif
+	endif
+	while not seq.gets(longline$, 4096, conf.fp)
+	|todo: make the 4k limit go away!
+		if longline$(1; 3) = "o" & pp then
+			longline$ = longline$(5; 4096)
+			|* drop the "o" & package & ":"
+			split.line.into.directories()
+			break
+		endif
+	endwhile
+	ret = seq.close(conf.fp)
+	|* if the above returns an error condition, that is ok.
+	return(0)
+}
+
+function split.line.into.directories()
+{
+		long	k
+		string	temp.dir(256)
+
+	k = 0
+	repeat
+		k = pos(longline$, ":")
+|todo: ":" is used for drive letters in NT. Make OS independant.
+|What do the "o"&pp lines look like in NT, if drive-letters are specified???
+|Check with people on baanboard.com
+		depth = depth + 1
+		if k then
+			temp.dir = longline$(1; (k - 1))
+			longline$ = longline$(k + 1; 4096)
+		else
+			temp.dir = longline$
+		endif
+
+| uncomment the next function in case of problems with environment variables
+		fix.env.variables(temp.dir)
+		fix.slash(temp.dir)
+		directories(1, depth) = temp.dir
+	until k = 0
+}
+
+function fix.env.variables(ref string temp.dir)
+{
+		long	i, j
+		string	dir(256)
+		string	env.var(16)
+
+	i = 0
+	repeat
+		i = pos(temp.dir, "${")
+		if i then
+			j = pos(temp.dir(i; 256), "}")
+			if j then
+				env.var = temp.dir(i+2; j-3)
+				dir = getenv$(env.var)
+				if i = 1 then
+					temp.dir = dir & temp.dir(i+j; 256)
+				else
+					temp.dir = temp.dir(1; i-1) & dir & temp.dir(i+j; 256)
+				endif
+			endif
+		endif
+	until i = 0
+}
+
+function long find.parent.object(
+				long	return.function.list,
+			ref	string	o.path,
+			ref	string	funcs(,),
+			ref	string	o.error)
+{
+		long	i
+
+
+	for i = 1 to depth
+		ret = get.functions(return.function.list, directories(1, i),
+				funcs, o.error)
+		if not ret then
+			o.path = strip$(directories(1, i))
+			return(0)	| Higher level parent found!
+		else
+			if ret < 0 then | serious error
+				return(ret)
+			endif
+		endif
+	endfor
+	o.error = "Parent object not found"
+	return(-1)
+}
+		
+function long get.functions(
+				long	return.function.list,
+			ref	string	directory,
+			ref	string	funcs(,),
+			ref	string	o.error)
+{
+		long	fp, i, j, filesize
+		string	temp.file(256)
+		string	ln$(1024)
+		string	options(256)
+
+	if return.function.list then
+		j = 0
+	else
+		j = 1
+	endif
+
+	directory = strip$(directory) & "/o" & pp & mmm & "/o" & mmm & script
+
+	if file.stat(directory, filesize) then
+		return(1)	| object not present in VRC.. continue searching
+	endif
+
+	temp.file = creat.tmp.file$(bse.tmp.dir$())
+	options = "-e " & strip$(directory) &  " -qo " & temp.file
+	ret = run.baan.prog("bic_info", options, RP_WAIT)
+	|hopefully the above works on NT!
+	if ret < 0 then
+		o.error = "bic_info could not be run"
+		return(ret)
+	endif
+	fp = seq.open(temp.file, "r")
+	if fp < 1 then
+		o.error = "Error reading output of bic_info"
+		if fp < 0 then
+			return(fp)	|return system error
+		else
+			return(-1)	|pseudo code because 0 indicates success
+		endif
+	endif
+	while not seq.gets(ln$, 1024, fp)
+		i = pos(toupper$(ln$), "FUNCTION EXTERN ")
+		if i then
+			if return.function.list then
+				j = j + 1
+			else
+				j = 1
+			endif
+			funcs(1, j) = ln$(i+16; pos(ln$,"(")-(i+16))
+			funcs(1, j) = strip$(funcs(1, j))
+			if toupper$(strip$(funcs(1, j))) = "_RUSH" then
+				| This object has the predefined function.
+				| Skip further processing.
+				ret = seq.unlink(temp.file)
+				| Ignore the error with deletion - if at all
+				return(1)	
+				| Using this object would cause infinite looping!
+			endif
+		endif
+	endwhile
+	ret = seq.unlink(temp.file)
+	| Ignore the error with deletion - if at all
+	return(0)	| higher level object - Bingo!
+}
+
+function fix.slash(ref string pname())
+{
+	long i
+
+	i = 0
+	repeat
+		i = pos(pname, "\")
+		if i then
+			pname(i; 1) = "/"
+		endif
+	until i = 0
+}
+
+|*********************************** end of script ****************************

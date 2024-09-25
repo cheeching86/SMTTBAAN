@@ -1,0 +1,81 @@
+|******************************************************************************
+|* ttcmcs122dll999  0  VRC B61O a  ext 
+|* RTS Warehouse Order
+|* JH Chen
+|* Jul 7 24 [18:08]
+|******************************************************************************
+|* Script Type: General Library
+|******************************************************************************
+
+table	twhinh200 
+table	ttisfc001 
+
+#include <bic_dal2>
+#include <bic_dam>
+
+#pragma used dll ottstpapihand
+#pragma used dll ottdllbw
+
+function extern string warehouse_order(
+	domain tcrefa  prod_no,
+	domain tcitem i_item
+	)
+{
+                DllUsage
+                Expl      : AFS to transfer WMS warehouse issue into InforLN Warehouse Order (MTR) 
+                Pre       : NA
+                Post      : NA
+                Input     :i_kitlist -> Input from CIG WMS inbound order
+                           i_item -> RTS Item
+						   i_qty -> RTS Qty
+                Output :
+                                o.error -> Error Msg
+
+                Return  : Warehouse Order Running Number 
+                EndDllUsage
+               
+                string	pr.device(8),orno(10) ,ship_to(10),sitm(47)
+				domain tcmcs.str100 o.error
+				long	 ret,pddt,iCount
+
+                o.error = "Test"
+    			pr.device = "D"
+				sitm = "         " & trim$(i_item)
+
+				iCount = 0
+				if isspace(prod_no) then
+ 					return("No Production Order Found")
+				else
+					select tisfc001.line.no
+					from tisfc001
+					where tisfc001.pdno = :prod_no
+					selectdo
+						ship_to = trim$(tisfc001.line.no)
+					selectempty
+						return("Production Order's Warehouse not exist!")
+					endselect
+
+					select ticst001.pdno
+					from ticst001 for update
+					where ticst001.pdno = :prod_no and ticst001.sitm = :sitm and ticst001.cwar <> :ship_to
+					selectdo
+						ret = dal.change.object("ticst001")
+						dal.set.field("ticst001.cwar", ship_to )
+						| set = dal.save.object("ticst001")
+						ret = dal.save.object("ticst001")
+						commit.transaction()
+						if ret <> 0 then       
+							abort.transaction()
+							dal.get.error.message(o.error)
+							return(o.error)
+						endif	
+						iCount =iCount+1
+					endselect
+					return("Item:" & sitm & "Count:" & str$(iCount))
+
+				endif
+
+
+		return(o.error)
+
+}

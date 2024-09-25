@@ -1,0 +1,423 @@
+|******************************************************************************
+|* whinh9101m0001 0  VRC B61C a  smt 
+|* Generate Warehousing Order Transfer (Manual)
+|* CC Hng                                                                                                      
+|* 27-08-2024
+|* Transfer from P9SM27 to Q30(B02)
+|******************************************************************************
+|* Main table whinh200 Warehousing Orders, Form Type 4
+|******************************************************************************
+
+|****************************** declaration section ***************************
+declaration:
+
+#include <bic_dam>
+#include <bic_cmf>
+
+  	table	twhinh200 		| Warehousing Orders
+	table	twhwmd300		| Locations
+	table	twhwmd200		| Warehouse
+	table 	twhwmd215		| Warehouse quantity
+	table	tticst001		| Estimated and Actual Material Cost
+	table	twhinr140		| Inventory
+	table	twhltc100		| Lots
+	table	ttisfc001		| Production Orders
+	table	ttcmcs003		| Warehouses
+	table	ttcmcs050		| First Free Number
+	table	twhinh010		| Warehousing Order Type
+	table	ttdipu010		| Item - Purchase by BP
+	table	ttcibd200		| Item - Ordering
+	table	ttimfc001		| Production Warehouse Orders
+	table	twhinh220		| Outbound Order Lines
+	table	twhinp100		| Planned Inventory Transaction by Item
+	| table	twhinr900		| Balance On Hand Quantity by Production Order
+	table	ttttxt010		| Text
+	table	twhinh210		| Inbound Order Lines
+
+   	extern	domain	tcpdno		pdno, prod.ord
+	extern  domain	tccwoc		cwoc, office, line.num
+	extern	domain	whinh.oorg	order.origin
+	extern	domain	whinh.ittp	transaction.type
+	extern	domain  tcrefe      	whinh200.refe
+	extern	domain	tcncmp		shipfrom.comp, shipto.comp
+	extern	domain	tctyps		shipfrom.type, shipto.type
+	extern	domain	tccshp		shipfrom.code, shipto.code
+	extern	domain	whloca		shipfrom.loca, shipto.loca
+	extern	domain	tcdate		delivery.date, receipt.date
+	extern	domain	tcseri		series
+	extern	domain	tccotp		order.type
+	extern	domain	tcdsca		line.dsca, shipfrom.codedsca, shipto.codedsca, shipfrom.locadsca, 
+					shipto.locadsca, series.dsca, office.dsca, order.type.dsca
+	extern	domain	tcnrgr		num.grp	
+	extern	domain	tcosta		status
+	extern	domain	tcclot		lot.num
+	extern	domain	tclsel		lot.code
+	extern	domain	tcitem		item
+	extern	domain	tcqst1		quantity, round.up, quantity.on.hand, extra.trans.quantity
+	extern	domain	tcorno		orno, o.num
+	extern	domain	tcinvt.date	f.dat, l.dat 
+	
+	long	curr.compnr, flag
+	string	refer(22)
+
+	#pragma used dll ottstpapihand
+
+|****************************** program section ********************************
+
+before.program:
+    
+
+
+	import("tisfc001.pdno", prod.ord)
+	import("tisfc001.line.no", line.num)
+	import("tisfc001.osta", status)
+
+	curr.compnr = get.compnr()
+	
+	| *******Check Production Order Status******* |
+
+	if etol(status) < 8 then
+
+		message("Production Order status must be completed or closed!")
+		 execute(end.program)
+	
+	else
+
+		| *******Check Line No. in Production Order******* |
+
+
+		select tisfc001.pdno
+		 	from tisfc001
+		 	where tisfc001.pdno = :prod.ord
+		 	selectdo	
+                if pos(tisfc001.pdno, "TMS") < 1 then
+                    message("This is not TMS production order!")
+		 		    execute(end.program)
+                else
+                    
+                    select tisfc001.line.no
+                        from tisfc001
+                        where tisfc001.pdno = :prod.ord and tisfc001.line.no = "P9SM27" 
+                        selectdo
+				| *******Check Warehousing Order Transfer Exist******* |
+
+				select tisfc001.line.no,tttxt010.text
+         			from tisfc001,tttxt010
+         			where tisfc001.pdno = :prod.ord and tisfc001.line.no = "P9SM27" 
+	 			and tttxt010.ctxt refers to tisfc001.txta 
+         			selectdo
+
+					refer = prod.ord & "/" & tttxt010.text
+					
+         				select whinh200.orno, whinh200.refe
+					from whinh200
+					where whinh200.refe = :refer  and whinh200.sfco = "P9SM27" and whinh200.stco = "Q30"
+					selectdo
+						message("Warehousing Order already exist! %s", whinh200.orno)
+						execute(end.program)
+					selectempty
+						flag = 1
+					
+					endselect	
+                				
+                           
+         			selectempty
+                			 message("WD Work Order Missing, Please check the production order text")
+                            		execute(end.program)
+         			endselect
+				
+                             
+                        selectempty
+                            message("This production line not under P9SM27")
+                            execute(end.program)
+                        endselect
+                    
+                endif
+            selectempty
+                message("Unable detect Productuon order number, please try again")
+		 		execute(end.program)
+            endselect
+
+
+			
+		
+	endif	
+
+|****************************** field section ********************************
+
+field.pdno:
+init.field:
+	
+	disable.fields(READONLY, "pdno")
+	pdno = prod.ord
+
+field.cwoc:
+init.field:
+
+	disable.fields(READONLY, "cwoc")
+	cwoc = line.num
+
+
+before.checks:
+
+	
+
+field.order.origin:
+init.field:
+	
+	disable.fields(READONLY, "order.origin")
+	order.origin = whinh.oorg.transfer.man
+
+field.transaction.type:
+init.field:
+	
+	disable.fields(READONLY, "transaction.type")
+	transaction.type = whinh.ittp.transfer
+
+field.whinh200.refe:
+init.field:
+	 select tisfc001.line.no,tttxt010.text
+         from tisfc001,tttxt010
+         where tisfc001.pdno = :prod.ord and tisfc001.line.no = "P9SM27" 
+	 and tttxt010.ctxt refers to tisfc001.txta
+         selectdo
+		disable.fields(READONLY, "whinh200.refe")
+		whinh200.refe = prod.ord & "/" & tttxt010.text
+              
+                           
+         selectempty
+                whinh200.refe = ""
+         endselect
+
+field.whinh210.orun:
+init.field:
+	disable.fields(READONLY, "whinh210.orun")
+	whinh210.orun = "pcs"
+
+field.shipfrom.comp:
+init.field:
+	
+	disable.fields(READONLY, "shipfrom.comp")
+	shipfrom.comp = curr.compnr
+
+field.shipto.comp:
+init.field:
+	
+	disable.fields(READONLY, "shipto.comp")
+	shipto.comp = curr.compnr
+
+field.shipfrom.type:
+init.field:
+	
+	disable.fields(READONLY, "shipfrom.type")
+	shipfrom.type = tctyps.warehouse
+
+field.shipto.type:
+init.field:
+	
+	disable.fields(READONLY, "shipto.type")
+	shipto.type = tctyps.warehouse
+
+field.shipfrom.code:
+init.field:
+	
+	disable.fields(READONLY, "shipfrom.code")
+	shipfrom.code = "P9SM27"
+
+field.shipfrom.codedsca:
+init.field:
+
+	select tcmcs003.cwar, tcmcs003.dsca
+	from tcmcs003
+	where tcmcs003.cwar = :shipfrom.code
+	selectdo
+		shipfrom.codedsca = tcmcs003.dsca
+	selectempty
+		shipfrom.codedsca = ""
+	endselect
+
+field.shipto.code:
+init.field:
+	
+	disable.fields(READONLY, "shipto.code")
+	shipto.code = "Q30"
+	
+
+field.shipto.codedsca:
+init.field:
+
+	select tcmcs003.cwar, tcmcs003.dsca
+	from tcmcs003
+	where tcmcs003.cwar = :shipto.code
+	selectdo
+		shipto.codedsca = tcmcs003.dsca
+	selectempty
+		shipto.codedsca = ""
+	endselect
+	
+field.shipfrom.loca:
+init.field:
+	
+	disable.fields(READONLY, "shipfrom.loca")
+	shipfrom.loca = ""
+
+field.shipto.loca:
+init.field:
+	
+	disable.fields(READONLY, "shipto.loca")
+	shipto.loca = ""
+
+field.series:
+selection.filter:
+
+	num.grp = "330"	
+	query.extend.where.in.zoom("tcmcs050.nrgr=" & quoted.string(num.grp))
+
+field.series.dsca:
+init.field:
+
+	disable.fields(READONLY, "series")
+	series = "WCG"
+
+when.field.changes:
+
+	select tcmcs050.nrgr, tcmcs050.seri, tcmcs050.dsca
+	from tcmcs050
+	where tcmcs050.nrgr = "330" and tcmcs050.seri(1;3) = :series
+	selectdo
+		series.dsca = tcmcs050.dsca
+	selectempty
+		series.dsca = ""
+	endselect
+
+field.order.type:
+init.field:
+	
+	disable.fields(READONLY, "order.type")
+	order.type = "W01"
+
+field.order.type.dsca:
+init.field:
+
+	select whinh010.otyp, whinh010.dsca
+	from whinh010
+	where whinh010.otyp = :order.type
+	selectdo
+		order.type.dsca = whinh010.dsca
+	selectempty
+		order.type.dsca = ""
+	endselect
+
+field.office:
+init.field:
+	
+	disable.fields(READONLY, "office")
+	office = ""
+	
+|****************************** group section **********************************
+
+group.1:
+init.group:
+   get.screen.defaults()
+
+|****************************** function **********************************
+
+Functions:	
+function extern gen.wh.order.trans()
+{
+
+	string 	form2.msg(100), pr.device(8), error.msg(100), refer(22),msg1(100),error(100)
+	domain	tcorno		orno
+	domain	tcclot		lot.num
+	domain	tclsel		lot.code
+
+    | ******* Check Warehousing Order Transfer Exist******* |
+	select whinh200.orno, whinh200.refe
+	from whinh200
+	where whinh200.refe = :whinh200.refe and whinh200.sfco = "P9SM27" and whinh200.stco = "Q30"
+	group by whinh200.orno, whinh200.refe
+	selectdo
+		message("Warehousing Order already exist! %s", whinh200.refe)			
+	selectempty
+
+        select tisfc001.pdno, tisfc001.cwar, tisfc001.qrdr, tisfc001.mitm,tttxt010.text
+        from tisfc001,tttxt010
+        where tisfc001.pdno = :prod.ord and tisfc001.line.no = "P9SM27" 
+        and tttxt010.ctxt refers to tisfc001.txta
+        selectdo
+            
+            if  double.cmp(whinh210.qoro,tisfc001.qrdr , 0.0001) = 1  then
+                message("Transfer Quantity over the production quantity is not allowed")		
+            else
+                select timfc001.clot
+                from timfc001
+                where timfc001.pdno = :prod.ord and timfc001.cwar = "P9SM27" and timfc001.clot <> ""
+                selectdo
+                    lot.num = timfc001.clot
+                    lot.code = tclsel.specific
+
+                    pr.device = "DOCUMENT"
+                
+                    refer = prod.ord & "/" & tttxt010.text
+
+                    stpapi.put.field("whinh2202m000", "order.number", str$(orno))
+                    stpapi.put.field("whinh2202m000", "order.origin", str$(order.origin))
+                    stpapi.put.field("whinh2202m000", "transaction.type", str$(transaction.type))
+                    stpapi.put.field("whinh2202m000", "item.segment.1", "         ")
+                    stpapi.put.field("whinh2202m000", "item.segment.2",str$(tisfc001.mitm))
+                    stpapi.put.field("whinh2202m000", "lot.selection", str$(lot.code))
+                    stpapi.put.field("whinh2202m000", "lot", str$(lot.num))
+                    stpapi.put.field("whinh2202m000", "qty.storage.unit", str$(whinh210.qoro))
+                    stpapi.put.field("whinh2202m000", "shipfrom.code", str$(shipfrom.code))
+                    stpapi.put.field("whinh2202m000", "item",str$(tisfc001.mitm))
+                    stpapi.put.field("whinh2202m000", "shipto.code", str$(shipto.code))
+                    stpapi.put.field("whinh2202m000", "shipto.loca", str$(shipto.loca))
+                    stpapi.put.field("whinh2202m000", "delivery.date", str$(delivery.date))
+                    stpapi.put.field("whinh2202m000", "receipt.date", str$(receipt.date))
+                    stpapi.put.field("whinh2202m000", "series", str$(series))
+                    stpapi.put.field("whinh2202m000", "order.type", str$(order.type))
+                    stpapi.put.field("whinh2202m000", "order.ref", str$(refer))
+
+                    stpapi.set.report("whinh2202m000", "rwhinh220211000", pr.device, error.msg)
+
+                    stpapi.form.command("whinh2202m000", 5, "exec.cont.process", form2.msg)
+            
+                    if not isspace(form2.msg) then
+                        message("%s", form2.msg)
+                    endif
+
+                    if not isspace(error.msg) then
+                        message("%s", error.msg)
+                    endif 	
+
+                    stpapi.end.session("whinh2202m000")
+
+                    if flag = 1 then
+                        select whinh200.orno, whinh200.refe
+                        from whinh200
+                        where whinh200.refe = :refer and whinh200.sfco = "P9SM27" and whinh200.stco = "Q30"
+                        group by whinh200.orno, whinh200.refe
+                        selectdo
+                            message("Warehousing Order : %s", whinh200.orno)
+                            query.extend.where.in.zoom("whinh200.orno ='"&whinh200.orno&"'")
+                            start.session(MODELESS,"whinh2100m100","","") 
+                            
+                        
+                        endselect
+                    endif
+                selectempty				
+                    message("No Lot number detect")								
+                endselect
+            endif
+
+            
+        selectempty				
+                message("No WD Work Order found in Production Order Text")								
+        endselect
+							
+    endselect
+		
+}
+
+
+

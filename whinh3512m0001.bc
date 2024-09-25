@@ -1,0 +1,184 @@
+|******************************************************************************
+|* whinh3512m0001  0  VRC B61C a  cus 
+|* Import Warehouse Receipt Line (Customize)
+|* CC Hng                                                                                            
+|* 2023-12-11
+|******************************************************************************
+|* Main table whinh312 Receipt Lines, Form Type 1
+|******************************************************************************
+                                                                                
+|****************************** declaration section ***************************
+declaration:
+#include <bic_dam>
+#pragma used dll "ottdllbw"
+#pragma	used dll ottstpapihand	| Baan API Handler
+#include <bic_desktop>
+
+    table   twhinh310 | Receipt 
+    table   twhinh312 | Receipt Lines
+
+    extern  domain  tcitem          itemcode,pitem,ReceiptNo
+    extern domain tcqst1    qty
+
+
+    long	ret5, ret6
+|****************************** program section ********************************
+before.program:
+	
+    if get.compnr() <> 903 then	| Cancel Upload data
+        message("This Function only open for company 903 to Test!")
+
+		stop()
+
+	endif
+import("whinh310.rcno", ReceiptNo)
+
+|****************************** group section **********************************
+
+group.1:
+init.group:
+   get.screen.defaults()
+   
+
+|****************************** functions **************************************
+Functions:
+
+ function extern upload.request()
+ {		
+ 	|****************** Upload File into Server *************************
+ 	long	ret, ret1, count, ret2, input.fp
+ 	long 	check1
+ 	string	filename2(200)
+ 	string	curr.line(2048)
+ 	domain	tcmcs.str100	filename
+ 	long 	str.no, i, pos.1
+ 	string	temp.txt(250), instr(1)
+ 	string	err.msg(200)
+ 	
+
+ 	ret1 = 0
+	
+ 	filename2 = "${BSE}/tmp_import/Upload_WH_Receipt_Line.csv"
+
+	if get.ui.mode() = 1 then
+		ret2 =  client2server("", filename2, false, false,true)
+	else
+		ret2 =  client.upload.file(filename2) 
+	endif
+
+	if ret2 <> 0 then	| Cancel Upload data
+		stop()
+	endif
+
+
+	temp.txt = trim$(get.local.filename())
+	str.no = len(temp.txt)
+
+	for i = 1 to str.no
+	instr = temp.txt(i;1)
+	
+	if instr = "\" then
+		pos.1 = i  
+	endif
+	endfor
+
+ 	filename = temp.txt(pos.1+1)
+	
+	if filename <> "Upload_WH_Receipt_Line.csv" then
+		message("Invalid file. Please select Upload_WH_Receipt_Line.csv")
+		stop()
+	endif
+
+
+
+ 	input.fp = seq.open(strip$(filename2),"rt")
+
+ 	if input.fp < 1 then
+ 		message("File Cannot be uploaded.")
+ 		return
+
+    else
+        seq.rewind(input.fp)
+        ret1 = seq.gets(curr.line, 2048, input.fp)
+        
+		while ret1 = 0
+
+            ret1 = seq.gets(curr.line, 2048, input.fp)
+            | message("ret1 : " & str$(curr.line))
+
+                | Check the Column have more then 3 or not
+                check1 = string.scan(curr.line, "%s,%f", itemcode, qty)   
+              	| message("ReceiptNo:" & ReceiptNo )
+
+                if check1 <> 2 then
+                    message("Invalid Fields.\n\nPlease check your field in your upload file.")
+                    stop()
+
+                endif 
+
+                pitem = "         " & itemcode
+
+                select tdipu001.item
+                from tdipu001
+                where tdipu001.item = :pitem
+                selectdo
+                selectempty
+                    message("Item Code %s not found in Item Purchase(tdipu0101m000). Please maintain first.",pitem)
+                    stop()
+                endselect
+
+                |***** Insert Purchase Order Line (ttdpur401) *****
+|***** Insert Purchase Order Line (ttdpur401) *****
+                select whinh310.*
+                from whinh310 
+                where whinh310.rcno = :ReceiptNo 
+				selectdo
+                    
+
+                    select whinh312.*
+                    from whinh312 for update
+                    where whinh312.rcno = :ReceiptNo and whinh312.item= :pitem
+                    selectdo
+                        message("UPDATE item :" & pitem )
+                        ret6 = dal.change.object("whinh312")
+                        dal.set.field("whinh312.qrcr", str$(qty))
+                        ret6 = dal.save.object("whinh312")
+                        commit.transaction()
+                
+                    selectempty
+                        message("insert item :" & str$(itemcode) )
+                        pitem = "JH-LAPTOP"
+                        ret6 = dal.new.object("whinh312")
+                        | dal.set.field("whinh312.orno", str$(ReceiptNo))
+                        dal.set.field("whinh312.item", str$(pitem))
+                        dal.set.field("whinh312.qrcr", str$(qty))
+
+                        ret6 = dal.save.object("whinh312")
+                        commit.transaction()  
+                    endselect
+                selectempty
+
+                endselect
+
+      
+	    endwhile
+
+        if ret6 = 0 then       
+            | commit.transaction()
+			message("Data Upload Successful.")
+		else 
+       
+            abort.transaction()
+ 
+            dal.get.error.message(err.msg)
+            message(err.msg)
+			| message("Data Upload Failed. %s",ret6 )
+		endif
+	
+		ret2 = seq.close(input.fp)
+		
+	endif
+
+
+ }
+	

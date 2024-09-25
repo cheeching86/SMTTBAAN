@@ -1,0 +1,241 @@
+|******************************************************************************
+|* tiedm9999m000  0  VRC B61C a  cus 
+|* Import Warehousing Order (Customize)
+|* CC HNG                                                                                         
+|* 27-08-2024
+|******************************************************************************
+|* Main table whinh200 Warehousing Order Line Form
+|******************************************************************************
+                                                                                
+|****************************** declaration section ***************************
+declaration:
+#include <bic_dam>
+#include <bic_cmf>
+
+#pragma used dll ottdllbw
+#pragma	used dll ottstpapihand	| Baan API Handler
+#include <bic_desktop>
+
+	table   twhinh200	| Warehousing Order
+	table	twhinh220
+ 	extern  domain  tcorno orno
+	extern  domain  tcwset oset
+	extern  domain  whinh.oorg oorg
+
+|****************************** program section ********************************
+before.program:
+	import("whinh200.orno", orno)
+	import("whinh200.oset", oset)
+	import("whinh200.oorg", oorg)
+|****************************** group section **********************************
+
+group.1:
+init.group:
+   get.screen.defaults()
+|****************************** functions **************************************
+Functions:
+
+ function extern upload.trans.item()
+ {		
+ 	long	ret, ret1, ret2, input.fp,check1,str.no, i, pos.1,count
+ 	string	filename2(200),curr.line(2048), temp.txt(250), instr(1)
+	string	pr.device(8)
+ 	domain  tcmcs.str100	o.message, o.error
+	domain	tcqst1 fqty
+	domain  tcitem fitem
+	domain	tcmcs.str100	filename
+	domain	tcclot		lot.num
+	domain	tclsel		lot.code
+	domain	tcdate		check.pddt
+	domain	tcwset		check.oset
+
+ 	ret1 = 0
+
+ 	filename2 = "${BSE}/tmp_import/Upload_Transfer_Detail.csv"
+
+	| Check user using WebUI or WebTop
+	if get.ui.mode() = 1 then
+		ret2 =  client2server("", filename2, false, false,true)
+	else
+		ret2 =  client.upload.file(filename2) 
+	endif
+
+	if ret2 <> 0 then	| Cancel Upload data
+		stop()
+	endif
+
+	temp.txt = trim$(get.local.filename())
+	str.no = len(temp.txt)
+
+	for i = 1 to str.no
+	instr = temp.txt(i;1)
+	
+	if instr = "\" then
+		pos.1 = i  
+	endif
+	endfor
+	
+ 	filename = temp.txt(pos.1+1)
+	
+ 	input.fp = seq.open(strip$(filename2),"rt")
+
+ 	if input.fp < 1 then
+ 		message("File Cannot be uploaded.")
+ 		return
+	else
+		| select whinh200.*
+		| from whinh200
+		| where whinh200.orno = :orno and whinh200.oorg = :oorg
+		| selectdo
+		| 	if check.pddt = whinh200.pddt then
+		| 		message("Import Failed: Delivery time cannot same with order number %s!",check.oset)
+		| 		stop()
+		| 	endif
+		| 	check.pddt = whinh200.pddt
+		| 	check.oset = whinh200.oset
+		| endselect	
+
+		select whinh200.*
+		from whinh200
+		where whinh200.orno = :orno and whinh200.oset = :oset and whinh200.oorg = :oorg
+		as set with 1 rows
+		selectdo
+			check.pddt = whinh200.pddt
+			check.oset = whinh200.oset
+
+			select whinh200.*
+			from whinh200
+			where whinh200.orno = :orno and whinh200.oorg = :oorg and whinh200.pddt=:check.pddt and whinh200.oset <> :check.oset
+			selectdo
+					message("Import Failed: Please adjust the time. Delivery date and time cannot be the same as the order number %s!",whinh200.oset)
+					stop()
+			endselect	
+		endselect	
+
+
+		| t_lsta			
+		| --2=Planned
+		| --5=Open
+		| --10=Advised
+		| --25=Staged
+		| --30=Shipped
+		select whinh220.*
+		from whinh220
+		where whinh220.lsta > 5 and whinh220.orno = :orno and whinh220.oset = :oset and whinh220.oorg = :oorg
+		selectdo
+				message("Import Failed: Line %s, Only planned/Open status transactions are allowed to be imported!",whinh220.pono)
+				stop()
+		endselect	
+
+		seq.rewind(input.fp)
+		create.progress.indicator ("Outbound Line Uploading...", PROGRESS.BAR + PROGRESS.STOP)	
+
+        ret1 = seq.gets(curr.line, 2048, input.fp)  |0 = success
+
+	 	| ***** Remove Existing PO Line *****|
+		| select whinh220.*
+		| from whinh220
+		| where whinh220.orno = :orno and whinh220.oset = :oset
+		| as set with 1 rows
+		| selectdo
+		| 	stpapi.put.field("whinh2100m000", "whinh200.orno", orno)
+		| 	stpapi.put.field("whinh2100m000", "whinh200.oset", str$(oset))
+		| 	ret = stpapi.find("whinh2100m000", o.message)
+		| 	if ret = 1 then 
+		| 		ret = stpapi.synchronize.dialog("whinh2100m000", "add",  o.error) 
+		| 		if not isspace(o.error) then
+		| 			stpapi.end.session("whinh2100m000", o.message)
+		| 			message (" synchronize %s - %s", o.message , o.error)
+		| 			stop()
+		| 		endif
+
+		| 		if ret = 1 then 
+		| 			select whinh220.*
+		| 			from whinh220
+		| 			where whinh220.orno = :orno and whinh220.oset = :oset
+		| 			selectdo
+		| 				ret = stpapi.delete("whinh2120m000", true, o.error) 
+		| 				if not ret then 
+		| 					ret = stpapi.recover("whinh2100m000",  o.error) 
+		| 					message("%s" &  o.error)
+		| 					stop()
+		| 				endif
+		| 				if count < 99 then
+		| 					count = count + 1
+		| 				endif 	
+		| 				change.progress.indicator (count,"Removing exisiting Outbound Line")
+		| 			selectempty
+		| 			endselect
+		| 		endif 
+		| 	endif
+		| selectempty
+		| endselect
+		count=0
+
+		while ret1 = 0
+			change.progress.indicator (count,"Uploading Outbound Line...%")
+                |***** Checking Excel Column *****| (Item,Qty)
+			check1 = string.scan(curr.line, "%s,%f,%s,%d/%d/%d",fitem,fqty)   
+			|***** Insert Warehouse Order | Outbound Line (ttdpur401) *****|
+			pr.device = "DOCUMENT"
+			stpapi.form.command("whinh2100m000", 5, "start.easy.order.entry", o.message)
+			if not isspace(o.message) then
+				stpapi.end.session("whinh2100m000", o.message)
+				message ("synchronize Error : %s" , o.message)
+				stop()
+			else
+				lot.code = tclsel.any
+				lot.num = ""
+
+				stpapi.put.field("whinh2202m000", "order.number", orno)
+				stpapi.put.field("whinh2202m000", "order.origin", str$(oorg))
+				stpapi.put.field("whinh2202m000", "transaction.type", str$(whinh200.ittp))
+				stpapi.put.field("whinh2202m000", "item.segment.1", "         ")
+				stpapi.put.field("whinh2202m000", "item.segment.2",str$(fitem))
+				stpapi.put.field("whinh2202m000", "lot.selection", str$(lot.code))
+				stpapi.put.field("whinh2202m000", "lot", str$(lot.num))
+				stpapi.put.field("whinh2202m000", "qty.storage.unit", str$(fqty))
+				stpapi.put.field("whinh2202m000", "shipfrom.code", str$(whinh200.sfco))
+				stpapi.put.field("whinh2202m000", "item",str$(fitem))
+				stpapi.put.field("whinh2202m000", "shipto.code", str$(whinh200.stco))
+				stpapi.put.field("whinh2202m000", "shipto.loca", "")
+				stpapi.put.field("whinh2202m000", "delivery.date", str$(whinh200.pddt))
+				stpapi.put.field("whinh2202m000", "receipt.date", str$(whinh200.pddt))
+				| stpapi.put.field("whinh2202m000", "series", str$("330"))	
+				stpapi.put.field("whinh2202m000", "order.type", str$(whinh200.otyp))
+				| stpapi.put.field("whinh2202m000", "order.ref", str$("refer"))
+				
+				stpapi.set.report("whinh2202m000", "rwhinh220211000", pr.device, o.error)
+				stpapi.form.command("whinh2202m000", 5, "exec.cont.process", o.message)
+
+				if not isspace(o.error) then
+					stpapi.end.session("whinh2202m000")
+					stpapi.end.session("whinh2100m000")
+					message("%s", o.error)
+					stop()
+				endif
+
+				if not isspace(o.message) then
+					stpapi.end.session("whinh2202m000")
+					stpapi.end.session("whinh2100m000")
+					message("%s", o.message)
+					stop()
+				endif 	
+				stpapi.end.session("whinh2202m000")
+			endif
+			stpapi.end.session("whinh2100m000")
+
+			ret1 = seq.gets(curr.line, 2048, input.fp)
+			if count < 99 then
+				count = count + 1
+			endif 	
+	    endwhile
+
+		change.progress.indicator (100,"Upload completed")
+		ret2 = seq.close(input.fp)
+		destroy.progress.indicator()
+	endif
+
+
+ }
+	

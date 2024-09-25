@@ -1,0 +1,56 @@
+|******************************************************************************
+|* whinh9102m9999  0  VRC B61C a  cus 
+|* Test 2
+|* baan
+|* 23-05-24 
+|******************************************************************************
+|* Script Type: DAL
+|******************************************************************************
+
+#include <bic_dam>
+#pragma used dll "ottdllbw"
+#pragma	used dll ottstpapihand	| Baan API Handler
+#include <bic_desktop>
+#include <bic_cmf>
+
+| table	tdaxch 		
+long	 ret6
+
+
+|****************************** function **********************************
+
+|Functions:	
+function extern string APIPO( 
+    string i_exchange,
+    string i_batch
+)
+{
+    string 	error.msg(100)
+
+                DllUsage
+                Expl      : AFS to generate CRM attentions 
+                Pre       : NA
+                Post      : NA
+                Input     :i.catt -> Attention Code
+                           i.dsca -> Attention Description
+                Output :
+                                o.error -> Error Msg
+
+                Return  : Add Attention 
+                EndDllUsage
+               
+                stpapi.put.field("daxch0223m000", "cxch.f.", str$(i_exchange))
+                stpapi.put.field("daxch0223m000", "cxch.t.", str$(i_exchange))
+                stpapi.put.field("daxch0223m000", "cbat.f.", str$(i_batch))
+                stpapi.put.field("daxch0223m000", "cbat.t.", str$(i_batch))
+                
+               	stpapi.form.command("daxch0223m000", 5, "exec.cont.process",  error.msg)
+
+                stpapi.end.session("daxch0223m000", error.msg)
+              
+
+                return(error.msg)
+
+
+	
+}

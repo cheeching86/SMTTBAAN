@@ -1,0 +1,137 @@
+|******************************************************************************
+|* Title	: rush <looking for a better name>!!!!
+|* Author	: MohanaVamsi Potluru <vamsi@who.net>
+|* Co-Author	: Praveen Ambekar <ambekarpraveen@yahoo.com>
+|* Date		: 2001-12-05
+|******************************************************************************
+|* Script Type	: 3GL - Program without Main Table.
+|* Description	: This program makes it possible to extend standard Baan events
+|*		by either suppressing or making them conditional.
+|* Category	: Utility
+|* License	:
+|* Copyright 2001 by MohanaVamsi Potluru and Praveen Ambekar
+|*
+|* All Rights Reserved
+|*
+|* Permission to use, copy, modify, and distribute this software and its
+|* documentation for any purpose and without fee is hereby granted,
+|* provided that the above copyright notice appear in all copies and that
+|* both that copyright notice and this permission notice appear in
+|* supporting documentation.
+|*
+|* MohanaVamsi Potluru, Praveen Ambekar and Baanboard.com DISCLAIM ALL
+|* WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING ALL
+|* IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO EVENT SHALL
+|* MohanaVamsi Potluru nor Praveen Ambekar nor Baanboard.com BE LIABLE
+|* FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+|* WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
+|* WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+|* TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE
+|* OR PERFORMANCE OF THIS SOFTWARE.
+|******************************************************************************
+
+	#pragma used dll otccomdllrush
+	#pragma used dll ottdllinputstr
+
+|****************************** PROGRAM     SECTION ***************************
+	DllUsage
+	Expl.:	This program is useful to extend the baan standard events
+	        when sources are not available. This can be used to customize
+	        standard session, suppress certain standard code from executing,
+	        execute additional code before or after a baan event.
+	        It can also be used to conditionally execute baan code
+	        or customized code depending on certain conditions. In short
+	        the possibilities are unlimited.
+
+	        This program makes use of the dll tccomdllrush to obtain the list
+	        of extern functions available in the standard object. The dll will
+	        first identify the VRC from which the object has to be picked up and
+	        then runs a bic_info on the object to obtain the list of the extern
+	        functions.Once the list of extern functions are available, it is
+	        written in the file requested by the user.
+
+	Pre:	None
+	Post:	None
+	Input:	"Parent object" and "file name to be created" should be
+		input when prompted.
+	Output:	It will create a file with the file name given by the user.
+	        This file will have all the extern functions available in the
+	        standard object (including those created for differnt event sections)
+	        The user can use this file as an input to create his own customized
+	        script.
+	|--------------------------------------------------------
+	Examples:
+	|--------------------------------------------------------
+	EndDllUsage
+function main()
+{
+		long	ret
+		string	path(256)
+		string	o.error(256)
+		string	funcs(256, 100)
+
+		long	fp, i
+		string	parent.object(16)
+		string	outfile(256)
+
+	#define	WRITELN(...)	ret = seq.puts(..., fp)
+
+	input.string("Get Parent Object", "parent object", 16, 16, parent.object)
+	input.string("Filename", "file to write to", 256, 50, outfile)
+
+	ret = tccom.dllrush.get.parent.functions(parent.object, funcs, o.error)
+	ret = tccom.dllrush.find.parent.object(parent.object, path, o.error)
+
+	fp = seq.open(outfile, "w")
+	i = 1
+
+	WRITELN("")
+	WRITELN("")
+	WRITELN("declaration:")
+	WRITELN("")
+	WRITELN("	#pragma used dll otccomdllrush")
+	WRITELN("")
+	WRITELN("|*********************parent************************************")
+	WRITELN("")
+	WRITELN("	long	parent.object.dll.id")
+	WRITELN("	long	parent.object.function.id")
+	WRITELN("	long	parent.object.error")
+	WRITELN("	string	path.of.parent.object(255)")
+	WRITELN("	string	out.error(256)")
+	WRITELN("")
+	WRITELN("|****************************** PROGRAM     SECTION ***************************")
+	WRITELN("")
+	WRITELN("before.program:")
+	WRITELN("	| This must be executed first; it loads the parent object")
+	WRITELN("	| dll so it's routines can be called.")
+	WRITELN("	| The ""find.parent.obj"" is an extern function that is in")
+	WRITELN("	| the tccomdllrush library.")
+	WRITELN("	if (tccom.dllrush.find.parent.object(" & """" & parent.object & """" & ", path.of.parent.object, out.error) < 0) then")
+	WRITELN("		message(""Unable to find parent object dll!"")")
+	WRITELN("		stop()")
+	WRITELN("	endif")
+	WRITELN("")
+	WRITELN("	parent.object.dll.id = load_dll(path.of.parent.object,0)")
+	WRITELN("	if (parent.object.dll.id <= 0) then")
+	WRITELN("		message(""Unable to load parent object dll!"")")
+	WRITELN("		stop()")
+	WRITELN("	endif")
+	while not isspace(funcs(1, i))
+		WRITELN("function extern " & shiftl$(strip$(funcs(1, i))) & "()")
+		WRITELN("{")
+		WRITELN("	parent.object.function.id = get_function(parent.object.dll.id, " & """" & shiftl$(strip$(funcs(1, i))) & """" & ")")
+		WRITELN("	parent.object.error = exec_function(parent.object.dll.id, parent.object.function.id)")
+		WRITELN("}")
+		WRITELN("")
+		i = i + 1
+	endwhile
+	WRITELN("function extern _rush()" )
+	WRITELN("{")
+	WRITELN("	long	i")
+	WRITELN("i = i + 1")
+	WRITELN("}")
+	WRITELN("")
+	WRITELN("|***************************** end of script *********************************")
+	seq.close(fp)
+}
+|***************************** end of script *********************************

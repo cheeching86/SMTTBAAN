@@ -1,0 +1,334 @@
+|******************************************************************************
+|* lhlntdllpogen  0  VRC B40l C4 BLN5
+|* Generate PO and PO Lines
+|* bsp
+|* 12-11-12 [09:18]
+|******************************************************************************
+|* Script Type: Library
+|******************************************************************************
+	table	ttdind014
+	table	ttdind011
+	table	ttdpur040
+	table	ttdpur041
+        extern domain   tcmcs.str215    eror.mesg,error,ret.mesg,retins,retrec
+        extern domain   tcorno  orno,comp,extorno
+	extern domain   tcyesno  value,serv,extexci,extsvyn,extsrtx,mvat,cptl,srtx,svyn,exci	
+	extern domain	tdoctbl  var,extoctr,ocyn	
+        extern domain   tcstr2  extexcg
+        extern domain   tccwar  extasvl
+        extern domain   tcccty  extscty
+        extern domain   tcdisc  extodis
+        extern domain   tfacp.ragr extagrt
+        extern domain   tdstr3 extsgcd,extloca,ctgcode
+	long ret, found
+        extern domain   tcdate  	bdat
+        extern domain   tcnama  	desc,tarf
+        extern domain   tdser.tax 	bstx
+        extern domain   tcpono  	linepono     
+	
+	#pragma used dll ottdllbw
+	#pragma used dll ottstpapihand
+	
+function extern	domain tcorno generate.po.header(domain tcgrno grno, domain tcsuno suno, domain tccotp cotp, domain tcncmp comp, domain tcdate odat, domain tcdate ddat, domain tccdec cdec, domain tccpay cpay, domain tcemno ccon)
+{
+        tdpur4101m000f.put.Purchase_Order(grno)
+        tdpur4101m000f.put.Supplier(suno)
+        tdpur4101m000f.put.Order_Type(cotp)
+	tdpur4101m000f.put.Company(comp)
+	tdpur4101m000f.put.Order_Date(odat)
+	tdpur4101m000f.put.Delivery_Date.tdpur040.ddat(ddat) 
+	tdpur4101m000f.put.Term_of_Delivery(cdec)
+	tdpur4101m000f.put.Terms_of_Payment(cpay)
+        tdpur4101m000f.put.Buyer(ccon)
+    	tdpur4101m000f.handle.sub.process("lplnt3106m000", "kill")		|#sshri-23082011.n
+    	|tdpur4101m000f.handle.sub.process("tdpurl102s002", "kill")
+        ret = stpapi.insert("tdpur4101m000", 1, error )
+	if ret = 0 then
+		message(error)
+		message("Insert Fail in Header, Session tdpur4101m000")
+		stpapi.recover("tdpur4101m000", error )
+		orno = 0
+		|return(orno)
+	endif	
+        if ret = 1 then
+                orno = tdpur4101m000f.get.Purchase_Order()
+                suno = tdpur4101m000f.get.Supplier()
+                tdpur4101m000f.handle.sub.process("tdpurl102s002", "add")
+                stpapi.zoom.option("tdpur4101m000",14,"tdpurl102s002", error)	
+                stpapi.put.field("tdpurl102s002","tdind014.orno",str$(orno))
+                ret = stpapi.find("tdpurl102s002",error)
+                if ret = 0 then
+			message(error)
+			message("Insert Fail in Header Extensions, Session tdpurl101s002")
+			stpapi.recover("tdpurl102s002", error )
+			orno = 1
+			|return(orno)
+		endif
+                if ret = 1 then
+                        ret = stpapi.insert("tdpurl102s002", 1, error )
+		        stpapi.continue.process( "tdpurl102s002", error )
+			extorno = tdpurl102s002f.get.Order_No()
+		        extexci = tdpurl102s002f.get.Excise_Applicable( )
+                        extexcg = tdpurl102s002f.get.Excise_Category( )
+                        extasvl = tdpurl102s002f.get.ASV_List( )
+                        extsvyn = tdpurl102s002f.get.Sales_Tax_Applicable( )
+                        extscty = tdpurl102s002f.get.State_Code( )
+                        extoctr = tdpurl102s002f.get.Octroi_Applicable( )
+                        extodis = tdpurl102s002f.get.Order_Discount( )
+                        extagrt = tdpurl102s002f.get.Agreement_No( )
+                        extsrtx = tdpurl102s002f.get.srtx( )
+                        extloca = tdpurl102s002f.get.loca( )
+                        extsgcd = tdpurl102s002f.get.sgcd( )
+			stpapi.end.session("tdpurl102s002", error)
+                        insert.tdind014()
+                endif 
+                tdpur4101m000f.end()        
+        else
+                tdpur4101m000f.end()        
+		orno = 0
+		|return(orno)
+	endif
+	return(orno)
+}
+function insert.tdind014()
+{
+	db.retry.point()
+	select	tdind014.*
+	from	tdind014 for update
+	where	tdind014._index1 = {:orno}
+	selectdo
+                
+                tdind014.exci = extexci
+		tdind014.svyn = extsvyn
+		tdind014.octr = extoctr
+		tdind014.srtx = extsrtx
+                tdind014.excg = extexcg
+		tdind014.asvl = extasvl
+		tdind014.odis = extodis
+		tdind014.agrt = extagrt
+                tdind014.sgcd = extsgcd
+		tdind014.loca = extloca
+		tdind014.octr = extoctr
+		tdind014.scty = extscty
+		db.update(ttdind014,db.retry)
+		commit.transaction()
+	selectempty
+		tdind014.orno = extorno
+		tdind014.exci = extexci
+		tdind014.svyn = extsvyn
+		tdind014.octr = extoctr
+		tdind014.srtx = extsrtx
+                tdind014.excg = extexcg
+		tdind014.asvl = extasvl
+		tdind014.odis = extodis
+		tdind014.agrt = extagrt
+                tdind014.sgcd = extsgcd
+		tdind014.loca = extloca
+		tdind014.octr = extoctr
+		tdind014.scty = extscty
+		
+		db.insert(ttdind014,db.retry)
+		commit.transaction()
+	endselect
+}
+
+function extern	domain tcpono insert.po.line(domain tcorno orno, domain tcpono pono, domain tccprj cprj, domain tcitem item, domain tccwar cwar, domain tccuni cupp, domain tcqrd1 oqua, domain tcpric pric, domain tcdate ddta, domain tfgld.leac pacn, domain tfgld.dimx dim1, domain tfgld.dimx dim2, domain tfgld.dimx dim3, domain tfgld.dimx dim4, domain tfgld.dimx dim5, domain tcdate odat)
+{
+	domain 	tcsuno	suno
+	domain 	tcpono	pono1, ret.pono
+	pono1 = 10
+        tdpur4101m000f.put.Purchase_Order(orno)
+        ret = stpapi.find("tdpur4101m000",error)
+        if ret = 0 then
+		message(error)
+		message("Failed in finding PO Header.")
+		stpapi.recover("tdpur4101m000", error )
+		ret.pono = 0
+	endif
+        if ret = 1 then
+        	found = 0
+        	select	tdpur041.*
+        	from	tdpur041 for update
+        	where	tdpur041._index1 = { :orno }
+        	as set with 1 rows
+        	selectdo
+        		found = 1
+        	selectempty 
+			tdpur041.orno = orno
+			tdpur041.pono = pono1
+			tdpur041.suno = suno
+			tdpur041.item = "      FWCE02A40L"
+			tdpur041.cntr = ""
+			tdpur041.opol = tcittb.standard
+			tdpur041.sdsc = tcyesno.yes
+			tdpur041.pric = 0.00
+			tdpur041.plev = tdpur.plev.item
+			tdpur041.cupp = "pcs"
+			tdpur041.cvpp = 1.00
+			tdpur041.citg = "HWEC10"
+			tdpur041.csgp = "    1C"
+			tdpur041.odat = date.num()
+			tdpur041.ddta = date.num()
+			tdpur041.ddtb = date.num()
+			tdpur041.ddtc = 0
+			tdpur041.ddtd = 0
+			tdpur041.oqua = 1.00
+			tdpur041.cuqp = "pcs"
+			tdpur041.cvqp = 1.00
+			tdpur041.leng = 0.00
+			tdpur041.widt = 0.00
+			tdpur041.thic = 0.00
+			tdpur041.dmth(1) = tddmth.gross
+			tdpur041.dmth(2) = tddmth.gross
+			tdpur041.dmth(3) = tddmth.gross
+			tdpur041.amta = tdpur041.pric * tdpur041.oqua
+			tdpur041.cwar = "WH2"
+			db.insert(ttdpur041,db.retry)
+			commit.transaction()
+        	endselect
+		stpapi.enum.answer("tdpur4102s000", "tdpur4101.01", tcyesno.yes)
+                orno = tdpur4101m000f.get.Purchase_Order()
+                suno = tdpur4101m000f.get.Supplier()
+                tdpur4101m000f.handle.sub.process("tdpur4102s000", "add")
+                tdpur4102s000f.handle.sub.process("tdpur4503s000", "kill")
+                tdpur4102s000f.handle.sub.process("lhpur1542s000", "kill")
+                stpapi.put.field("tdpur4102s000","tdpur041.orno",str$(orno))
+                if found = 1 then 
+                	stpapi.put.field("tdpur4102s000","tdpur041.pono",str$(tdpur041.pono))
+                else
+                	stpapi.put.field("tdpur4102s000","tdpur041.pono",str$(pono1))
+                endif
+                stpapi.put.field("tdpur4102s000","tdpur041.suno",str$(suno))
+                ret = stpapi.find("tdpur4102s000",error)
+                if ret = 1 then 
+	                |tdpur4102s000f.handle.sub.process("tdpur4503s000", "kill")
+        	        |tdpur4102s000f.handle.sub.process("lhpur1542s000", "kill")
+			|ret =  tdpur4102s000f.delete(true,error)
+			if found = 0 then 
+	        		select	tdpur041.*
+        			from	tdpur041 for update
+        			where	tdpur041._index1 = { :orno, :pono1 }
+				selectdo
+					db.delete(ttdpur041, db.retry)
+					commit.transaction()
+				endselect
+			found = 0
+			endif
+			|tdpur4102s000f.handle.sub.process("tdpur5106s000", "add")
+			|stpapi.continue.process( "tdpur5106s000", error )
+			|stpapi.end.session("tdpur5106s000")
+		else
+                	message(error)
+                	message("Failed to find the PO lines data.")
+			stpapi.recover("tdpur4102s000", error )
+			ret.pono = 0
+		endif
+		if ret = 1 then 
+	                |stpapi.put.field("tdpur4102s000","tdpur041.pono",str$(pono))
+	                tdpur4102s000f.put.Position_Number.tdpur041.pono(pono)
+	        	tdpur4102s000f.put.Project(cprj)
+	        	tdpur4102s000f.put.Item(item)
+			tdpur4102s000f.put.Purchase_Unit(cupp)			|R.R.Patni.13.12.07.n
+	        	tdpur4102s000f.put.Ordered_Quantity(oqua)
+		        tdpur4102s000f.handle.sub.process("tdind0271s000", "kill")
+	        	ret = stpapi.insert("tdpur4102s000", 1, error )
+	        	if ret = 0 then
+				message(error)
+				message("Insert Fail in lines , Session tdpur4102s000")
+				stpapi.recover("tdpur4102s000", error )
+				ret.pono = 0
+	        	endif
+	        	|if ret = 1 then
+			|        tdpur4102s000f.handle.sub.process("tdind0271s000", "add")
+			|        stpapi.put.field("tdind0271s000","tdind020.orno",str$(orno))
+			|       | stpapi.put.field("tdind0271s000","tdind020.pono",str$(pono))
+			|        ret = stpapi.find("tdind0271s000",error)
+			|        if ret = 1 then 
+			|		select tdind014.*                                            
+			|		from   tdind014                                              
+			|		where  tdind014._index1 = {:orno}                            
+			|		selectdo                                                     
+			|			mvat = tcyesno.no                                            
+			|			cptl = tcyesno.no                                            
+			|			bdat = date.num()                                            
+			|			exci = tcyesno.no|tdind014.exci                              
+			|			svyn = tcyesno.no|tdind014.svyn                              
+			|			ocyn = tdoctbl.no|tdind014.octr                              
+			|			srtx = tcyesno.no|tdind014.srtx                              
+			|			if tdind014.srtx = tcyesno.yes then                          
+			|				bstx = ltoe(2)                                       
+			|			else                                                         
+			|				bstx = ltoe(0)                                       
+			|			endif                                                        
+			|			if tdind014.exci = tcyesno.yes then                          
+			|				select tdind011.*                                           
+			|				from   tdind011                                             
+			|				where  tdind011._index1 = {:item}                           
+			|				selectdo                                                    
+			|					tarf = tdind011.tarf                                 
+			|				selectempty                                                 
+			|				endselect                                                   
+			|			else                                                         
+			|				tarf  = ""                                                
+			|			endif                                                        
+			|		endselect                                                    
+			|                tdind0271s000f.put.Base_Date(bdat)
+			|                tdind0271s000f.put.Excise_Applicable(exci)
+			|                if exci = tcyesno.yes then
+			|                        tdind0271s000f.put.Tariff_Code(tarf)
+			|                endif
+			|                tdind0271s000f.put.Modvatable(mvat)
+			|	        tdind0271s000f.put.Capitalized(cptl) 
+			| 	        tdind0271s000f.put.Sales_Tax_Applicable(svyn)
+			| 	        tdind0271s000f.put.ITC_Appl.itc.appl(value)
+			|	        tdind0271s000f.put.Service_Tax_Appl(srtx)
+			|                if srtx = tcyesno.yes then
+			|                        ctgcode = "BA "
+			|                        |stpapi.put.field("tdind0271s000","tdind020.ctcd",str$(ctgcode))
+			|                        tdind0271s000f.put.bstx(bstx)
+			|                endif
+			| 	        tdind0271s000f.put.Octroi_Applicable(ocyn)
+			|		stpapi.enum.answer("tdind0271s000", "tdind0271s001", tcyesno.no)	|R.R.Patni.04.03.08.n
+			|        	ret = stpapi.update("tdind0271s000", 1, error )
+			|		if ret = 0 then
+			|			message(error)
+			|			message("Insert Fail in lines Extensions, Session tdind0271s000")
+			|			stpapi.recover("tdind0271s000", error )
+			|		endif
+			|		      |  stpapi.continue.process( "tdind0271s000", error )
+			|                |tdind0271s000f.save(error)                
+			|                stpapi.end.session("tdind0271s000")   
+			|                linepono = tdpur4102s000f.get.Position_Number.tdpur041.pono( )    
+		        |                tdpur4102s000f.end()
+                	|	        tdpur4101m000f.end()
+			|	        long tmp
+			|	        tmp = 8        
+			|	        db.retry.point()
+			|	        select  tdpur040.*
+			|	        from    tdpur040 for update
+			|	        where   tdpur040._index1 = {:orno}
+			|	        selectdo
+			|	                tdpur040.corg = ltoe(tmp)
+			|	                db.update(ttdpur040,db.retry)
+			|	                commit.transaction()
+			|	        endselect
+	        	|	endif   
+	        	|endif
+	        	ret.pono = tdpur4102s000f.get.Position_Number.tdpur041.pono()
+	        	tdpur4102s000f.end()
+	        	tdpur4101m000f.end()
+		        long tmp
+		        tmp = 8        
+		        db.retry.point()
+		        select  tdpur040.*
+		        from    tdpur040 for update
+		        where   tdpur040._index1 = {:orno}
+		        selectdo
+		                tdpur040.corg = ltoe(tmp)
+		                db.update(ttdpur040,db.retry)
+		                commit.transaction()
+		        endselect
+	        endif
+	endif        	
+	return(ret.pono)
+}

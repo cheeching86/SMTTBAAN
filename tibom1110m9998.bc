@@ -1,0 +1,96 @@
+|******************************************************************************
+|* tiedm9999m000  0  VRC B61C a  cus 
+|* Import Purchase Order (Customize)
+|* CC HNG                                                                                         
+|* 
+|******************************************************************************
+|* Main table tdpur410 Purchase Order Line Form
+|******************************************************************************
+                                                                                
+|****************************** declaration section ***************************
+declaration:
+#include <bic_dam>
+#include <bic_cmf>
+
+#pragma used dll ottdllbw
+#pragma	used dll ottstpapihand	| Baan API Handler
+#include <bic_desktop>
+
+	table   ttibom010	| Bill of Material
+	table   ttibom040	| Routing
+
+
+ 	extern  domain  tcitem mitm
+	
+
+|****************************** program section ********************************
+before.program:
+| import("tibom010.mitm", mitm)	
+
+
+
+|****************************** group section **********************************
+
+group.1:
+init.group:
+   get.screen.defaults()
+   
+
+|****************************** functions **************************************
+Functions:
+
+ function extern upload.request()
+ {		
+ long	ret, ret1, ret2, input.fp,check1,str.no, i, pos.1,count
+ 	string	filename2(200),curr.line(2048), temp.txt(250), instr(1)
+ 	domain  tcmcs.str100	o.message, o.error
+	domain  tcmpnr fmpn
+	domain  tcmcs.cmnf fmanufacturer
+	domain	tcqrd1 fqty
+	domain  tcitem fitem
+	domain	tcmcs.str100	filename
+
+ 	ret1 = 0
+
+ 	filename2 = "${BSE}/tmp_import/Upload_Material_Routing.csv"
+
+	| Check user using WebUI or WebTop
+	if get.ui.mode() = 1 then
+		ret2 =  client2server("", filename2, false, false,true)
+	else
+		ret2 =  client.upload.file(filename2) 
+	endif
+
+	if ret2 <> 0 then	| Cancel Upload data
+		stop()
+
+	endif
+
+
+	temp.txt = trim$(get.local.filename())
+	str.no = len(temp.txt)
+
+	for i = 1 to str.no
+	instr = temp.txt(i;1)
+	
+	if instr = "\" then
+		pos.1 = i  
+	endif
+	endfor
+	
+ 	filename = temp.txt(pos.1+1)
+	
+ 	input.fp = seq.open(strip$(filename2),"rt")
+
+ 	if input.fp < 1 then
+ 		message("File Cannot be uploaded.")
+ 		return
+	else
+ 		message("ok.")
+ 		return
+		
+	endif
+
+
+ }
+	

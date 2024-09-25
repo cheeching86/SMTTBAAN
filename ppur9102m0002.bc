@@ -1,0 +1,172 @@
+                                                                                
+#include <bic_dam>
+#pragma used dll "ottdllbw"
+#pragma	used dll ottstpapihand	| Baan API Handler
+#include <bic_desktop>
+#include <bic_cmf>
+
+	table	ttdpur400 | PO Header
+	table	ttdpur401 | PO Lines
+	table	ttdpur451 | PO Lines History
+	table   ttdpur901 | Control Items
+	table	ttcibd001 | Item Master
+	table	ttcibd003 | Convert Factor
+	table	ttccom001 | Employee
+	table	ttccom100 | Business Partner
+
+	extern  domain  tcitem		item.f    fixed
+	extern  domain  tcitem		item.t    fixed
+	extern	domain	tcpmd.date	date.f
+	extern	domain	tcdate		appr.date.f
+	extern	domain	tcdate		appr.date.t
+	extern	domain	tcyesno		ctrl.yn
+	extern	domain	tcyesno		qtyz.yn
+	extern	domain	tcqrd1		cal.qty
+
+
+|Functions:	
+function extern string before.save.object(
+    string text(50))
+{
+string 	o.error(100), error.msg(100),txtno(10)
+long	 ret6
+string current_txta(100)
+
+            DllUsage
+            Expl      : AFS to generate CRM attentions 
+            Pre       : NA
+            Post      : NA
+            Input     :i.catt -> Attention Code
+                        i.dsca -> Attention Description
+                        i_item -> Issued Item Code
+            Output :
+                            o.error -> Error Msg
+
+            Return  : Add Attention 
+            EndDllUsage
+                                        
+            | domain tcpdno  v.result
+            txtno = ""
+            error.msg = ""
+
+            stpapi.form.command("tttxt1100m000", 5, "exec.add.set",o.error)
+            if not isspace(o.error) then
+                return(o.error)
+            endif
+
+            stpapi.put.field("tttxt1100m000", "tttxt001.txtg", str$("text"))
+            stpapi.put.field("tttxt1100m000", "tttxt001.opwd", str$("text"))
+            stpapi.put.field("tttxt1100m000", "tttxt001.desc", str$("aaa"))
+            stpapi.put.field("tttxt1100m000", "tttxt001.Refcntd", "0")
+            stpapi.put.field("tttxt1100m000", "tttxt001.Refcntu", "0")
+
+            stpapi.put.field("tttxt1100m000", "tttxt002.clan", "2")
+            stpapi.put.field("tttxt1100m000", "tttxt002.kwd1", "Purchase Requisit")
+            stpapi.put.field("tttxt1100m000", "tttxt002.kwd2", "Requisition Heade")
+            stpapi.put.field("tttxt1100m000", "tttxt002.kwd3", "Q15013273")
+            stpapi.put.field("tttxt1100m000", "tttxt002.kwd4", "REQ:CHING/357")
+            stpapi.put.field("tttxt1100m000", "tttxt002.nlin", "1")
+            stpapi.put.field("tttxt1100m000", "tttxt002.Refcntd", "0")
+            stpapi.put.field("tttxt1100m000", "tttxt002.Refcntu", "1")
+
+            ret6 = stpapi.insert("tttxt1100m000", true, error.msg)
+            if not isspace(error.msg) then
+                return(error.msg)
+            endif
+
+            stpapi.get.field("tttxt1100m000", "tttxt001.ctxt", txtno,10)
+
+
+            | stpapi.put.field("tttxt1100m000", "tttxt010.text", text)
+            | | stpapi.form.command("tttxt1100m000", 5, "exec.cont.process",o.error)
+            | | if not isspace(o.error) then
+            | |     return(o.error)
+            | | endif
+
+
+            | stpapi.end.session("tttxt1100m000", error.msg)
+
+            | return(txtno)
+            | stpapi.form.command("tttxt1100m000", 5, "exec.cont.process",o.error)
+            | stpapi.put.field("tttxt1100m000", "tttxt010.ctxt", txtno)
+            | stpapi.put.field("tttxt1100m000", "tttxt010.text", text)
+
+            | stpapi.save("tdpur2600m000", true, error.msg)
+            | if not isspace(error.msg) then
+            |     return(error.msg)
+            | endif
+|783470
+            ret6 = dal.new.object("tttxt010")
+            dal.set.field("tttxt010.ctxt", txtno)
+            dal.set.field("tttxt010.clan", "2")
+            dal.set.field("tttxt010.seqe", "1")
+            dal.set.field("tttxt010.text", text)
+            dal.set.field("tttxt010.Refcntd", "0")
+            dal.set.field("tttxt010.Refcntu", "0")
+            ret6 = dal.save.object("tttxt010")
+            commit.transaction()  
+
+            if ret6 = 0 then       
+                | return(txtno)
+            else 
+        
+                abort.transaction()
+                dal.get.error.message(error.msg)
+                return(error.msg)
+            endif
+
+            | ret6 = dal.new.object("tttxt002")
+            | dal.set.field("tttxt002.ctxt", txtno)
+            | dal.set.field("tttxt002.clan", "2")
+            | dal.set.field("tttxt002.kwd1", "Purchase Requisit")
+            | dal.set.field("tttxt002.kwd2", "Requisition Heade")
+            | dal.set.field("tttxt002.kwd3", "Q15013273")
+            | dal.set.field("tttxt002.kwd4", "REQ:CHING/357")
+            | dal.set.field("tttxt002.nlin", "1")
+            | dal.set.field("tttxt002.Refcntd", "0")
+            | dal.set.field("tttxt002.Refcntu", "1")
+            | ret6 = dal.save.object("tttxt002")
+            | commit.transaction()  
+
+            | if ret6 = 0 then       
+            |     | return(txtno)
+            | else 
+            |     abort.transaction()
+            |     dal.get.error.message(error.msg)
+            |     return(error.msg)
+            | endif
+
+            stpapi.update("tttxt1100m000", true, error.msg)
+            if not isspace(error.msg) then
+                return(error.msg)
+            endif
+
+            select tdpur200.*
+            from tdpur200 for update
+            where tdpur200.rqno = "Q15013273"
+            selectdo
+
+                ret6 = dal.change.object("tdpur200")
+                dal.set.field("tdpur200.txta", txtno)
+                ret6 = dal.save.object("tdpur200")
+                commit.transaction()
+                | if ret6 = 0 then       
+                |     | return(txtno)
+                | else 
+            
+                |     abort.transaction()
+                |         dal.get.error.message(error.msg)
+                |     return(error.msg)
+                | endif
+            selectempty
+            endselect
+
+            stpapi.form.command("tdpur2600m000", 5, "submit.requisition", o.error)
+            if not isspace(o.error) then
+                            return(o.error)
+            endif
+            stpapi.end.session("tdpur2600m000", error.msg)
+            stpapi.end.session("tttxt1100m000", error.msg)
+
+	return(txtno)
+}

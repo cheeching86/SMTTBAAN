@@ -1,0 +1,601 @@
+|******************************************************************************
+|* txintdll0010  0  VRC B61O a  ext 
+|* Migration Library
+|* sujeet
+|* 25-05-23 [21:50]
+|******************************************************************************
+|* Script Type: Library
+|******************************************************************************
+                                                                                
+#include <bic_dam> 
+#include <bic_desktop>
+|	table	ttxint010
+|	table	ttxint011           
+|	table	ttxint012
+
+	table	ttctax400
+	
+function extern long txint.dll0010.get.data.from.specific.table.single.row
+				(
+					domain	tcmcs.str30	i.doc.defi,
+					domain	tcmcs.str8	i.table_name
+				)
+{
+	long	table_id
+	long	json.array
+	
+|	json.array = Json.newArray()
+	table_id = db.bind("t"& i.table_name)
+	db.first(table_id)
+	
+	txint.dll0010.insert.data.by.field.name(i.doc.defi,i.table_name,json.array)
+	
+	return(json.array)
+}                         
+                                            
+function extern long txint.dll0010.get.data.from.specific.table
+				(
+					domain	tcmcs.str8		i.table_name,
+					domain	tcmcs.str132m	i.server.path,
+					domain	tcmcs.long		i.nr.split
+				)
+{
+	long	table_id
+	long	nr_rows 
+	long	json.array
+	long	i
+	long	tmp.i
+	domain	tcmcs.str132m	file.name
+	long	file_count
+	long	remaining
+	domain	tcncmp		curr.comp
+	tmp.i = 0
+	file_count = 0
+	remaining = 0
+	
+	domain	tcmcs.str132m		new.file.name
+	long						file_pointer
+	domain	tcmcs.str132m		tmp.file.name
+	
+	curr.comp = get.compnr()
+	table_id = db.bind("t"& i.table_name) 
+	db.nr.rows(table_id, nr_rows)
+
+	for i = 1 to nr_rows
+		if i = 1 then 
+			db.first(table_id)
+		else
+			
+			db.next(table_id)
+			
+		endif 
+		
+		if tmp.i = 0 then
+			tmp.file.name = "\"&i.table_name&"_"& str$(file_count)&"_"&str$(get.compnr())&".json"
+|			new.file.name = bse.tmp.dir$()&trim$(tmp.file.name)
+|			new.file.name = "e:\sujeet\"&trim$(tmp.file.name)
+			new.file.name = trim$(i.server.path)&trim$(tmp.file.name)
+			file_pointer = seq.open(new.file.name,"w")
+			seq.puts("[",file_pointer)
+			seq.puts("{",file_pointer)
+		endif
+		txint.dll0010.get.data.by.field.name(i.table_name,json.array,file_pointer)
+|		if i <> nr_rows then
+|			seq.puts("},",file_pointer)
+|			seq.puts("{",file_pointer)
+|		else
+|			seq.puts("}]",file_pointer)
+|		endif
+		tmp.i = tmp.i + 1
+		if i.nr.split then
+			if nr_rows>=i.nr.split then
+				if tmp.i = i.nr.split then
+					file_count = file_count + 1
+					seq.puts("}]",file_pointer)
+					seq.close(file_pointer)
+|					server2client(new.file.name,trim$(i.server.path)&trim$(tmp.file.name),true)
+					tmp.i = 0
+				else if i=nr_rows then
+					file_count = file_count + 1
+					seq.puts("}]",file_pointer)
+					seq.close(file_pointer)
+|					server2client(new.file.name,trim$(i.server.path)&trim$(tmp.file.name),true)
+					remaining = 0
+					tmp.i = 0
+				else
+					seq.puts("},",file_pointer)
+					seq.puts("{",file_pointer)
+				endif
+				endif
+|				endif
+			else
+				if i = nr_rows then
+|					|Write Json File
+					seq.puts("}]",file_pointer)
+					seq.close(file_pointer)
+|					server2client(new.file.name,trim$(i.server.path)&trim$(tmp.file.name),true)
+				else
+					seq.puts("},",file_pointer)
+					seq.puts("{",file_pointer)
+				endif
+			endif
+		else
+			if not i.nr.split then
+				if i = nr_rows then
+					seq.puts("}]",file_pointer)
+					seq.close(file_pointer)
+					break
+				endif
+				seq.puts("},",file_pointer)
+				seq.puts("{",file_pointer)
+			endif
+		endif	 
+	endfor
+	
+| 		if not i.nr.split then
+| 			seq.puts("},",file_pointer)
+| 			seq.puts("{",file_pointer)
+| 	| 		seq.close(file_pointer)
+| 	|		server2client(new.file.name,trim$(i.server.path)&trim$(tmp.file.name),true)
+| 		else
+| 			seq.puts("}]",file_pointer)
+| 			seq.close(file_pointer)
+| 		endif
+	
+	db.unbind(table_id)
+	return(0)
+}
+
+function extern long txint.dll0010.get.data.by.field.name
+				(
+					domain	tcmcs.str8	i.table_name,
+					long			i.json.arrya,
+					long			i.file_pointer
+				)
+{
+	long	i.json.object
+	long	ret_val
+	
+	|rdi.table Variables
+	long no_keys
+	long no_columns
+	long int_length
+	long real_length
+	long no_cdf
+	|rdi.table.column Variables
+	long column_number
+	string column_name(20)
+	string domain_name(14)
+	long offset
+	long size
+	long dept
+	long type
+	long flag
+	string default_value
+	long flag_filter
+	
+	
+	string col_desc(60)
+	string fldn(10) , dmy(8) 
+	
+	
+	long 	long.var 
+	double 	dbl.var
+	string 	str.var(2000)
+	string 	str.var.mb(1000)
+	
+|	i.json.object = Json.newObject()
+	ret_val = rdi.table(i.table_name, no_keys,no_columns,int_length,real_length,no_cdf)
+	for column_number = (5 + no_keys) to no_columns
+		
+		ret_val = rdi.table.column(i.table_name, 
+				column_number,
+				column_name,
+				domain_name,  
+				offset, 
+				size,
+				dept,
+				type,
+				flag,
+				default_value)
+				
+		tt.field.desc(column_name, col_desc)		
+		string.scan(column_name,"%s.%s", dmy, fldn) 
+		col_desc = col_desc & "_" & fldn
+		
+		str.var =""
+		
+		on case type
+		case DB.BYTE:	
+		case DB.INTEGER: 
+		case DB.LONG:
+		case DB.BITSET: 
+		case DB.MAIL:
+		case DB.TEXT:
+			get.var(pid, column_name, long.var)
+			if column_number = no_columns then
+				seq.puts(chr$(34)&col_desc&chr$(34)&chr$(058)&str$(long.var),i.file_pointer)
+			else
+				seq.puts(chr$(34)&col_desc&chr$(34)&chr$(058)&str$(long.var)&chr$(044),i.file_pointer)
+			endif
+			break
+		case DB.ENUM: 
+			get.var(pid, column_name, long.var)
+		    str.var = enum.descr$(domain_name, ltoe(long.var) )
+			if column_number = no_columns then
+				seq.puts(chr$(34)&col_desc&chr$(34)&chr$(058)&chr$(34)&str.var&chr$(34),i.file_pointer)
+			else
+				seq.puts(chr$(34)&col_desc&chr$(34)&chr$(058)&chr$(34)&str.var&chr$(34)&chr$(044),i.file_pointer)
+			endif
+			
+			break
+		case DB.TIME:
+			get.var(pid, column_name, long.var)
+			if long.var <>0 then 
+				str.var = sprintf$("%u(%04Y/%02m/%02d) %U(%02H%x%02m%x%02s)",long.var, long.var)
+			else
+|				str.var = chr$(34)
+			endif
+			
+			if column_number = no_columns then
+				seq.puts(chr$(34)&col_desc&chr$(34)&chr$(058)&quoted.string(str.var),i.file_pointer)
+			else
+				seq.puts(chr$(34)&col_desc&chr$(34)&chr$(058)&quoted.string(str.var)&chr$(044),i.file_pointer)
+			endif
+			break
+		case DB.DATE:
+			get.var(pid, column_name, long.var)
+			if long.var then 
+				str.var = sprintf$("%D(%04Y/%02m/%02d)",long.var)
+			else
+			endif
+			
+			
+			
+			if column_number = no_columns then
+				seq.puts(chr$(34)&col_desc&chr$(34)&chr$(058)&str$(str.var),i.file_pointer)
+			else
+				seq.puts(chr$(34)&col_desc&chr$(34)&chr$(058)&quoted.string(str.var)&chr$(044),i.file_pointer)
+			endif
+			break
+		case DB.FLOAT: 
+		case DB.DOUBLE: 
+			get.var(pid, column_name, dbl.var)
+			
+			if column_number = no_columns then
+				seq.puts(chr$(34)&col_desc&chr$(34)&chr$(058)&str$(dbl.var),i.file_pointer)			
+			else
+				seq.puts(chr$(34)&col_desc&chr$(34)&chr$(058)&str$(dbl.var)&chr$(044),i.file_pointer)			
+			endif
+			break
+		case DB.STRING:
+			get.var(pid, column_name, str.var)
+			
+			if pos(str.var,chr$(34)) then
+				str.var = str.replace$(str.var,chr$(34),"\"&chr$(34))
+			endif
+			
+			if pos(str.var,"\") then
+				str.var = str.replace$(str.var,chr$(34),"\\"&chr$(34))
+			endif
+			
+			
+			if column_number = no_columns then
+				seq.puts(chr$(34)&col_desc&chr$(34)&chr$(058)&chr$(34)&trim$(str.var)&chr$(34),i.file_pointer)
+			else
+				seq.puts(chr$(34)&col_desc&chr$(34)&chr$(058)&chr$(34)&trim$(str.var)&chr$(34)&chr$(044),i.file_pointer)
+			endif
+			break
+		case DB.MULTIBYTE:
+			get.var(pid, column_name, str.var.mb)
+		
+			if pos(str.var.mb,chr$(34)) then
+				str.var.mb = str.replace$(str.var.mb,chr$(34),"\"&chr$(34))
+			endif
+			
+			if pos(str.var.mb,"\") then
+				str.var.mb = str.replace$(str.var.mb,chr$(34),"\\"&chr$(34))
+			endif
+			
+		
+			if column_number = no_columns then
+				seq.puts(chr$(34)&col_desc&chr$(34)&chr$(058)&chr$(34)&trim$(str.var.mb)&chr$(34),i.file_pointer)
+			else
+				seq.puts(trim$(chr$(34)&col_desc&chr$(34)&chr$(058)&chr$(34)&trim$(str.var.mb)&chr$(34)&chr$(044)),i.file_pointer)
+			endif
+			break
+		case DB.COMBINED:
+			break
+		default:
+			break 
+		endcase
+		
+		
+		
+	endfor
+	
+	
+	return(0)
+}
+
+function extern long txint.dll0010.insert.data.by.field.name
+				(
+					domain	tcmcs.str30	i.doc.defi,
+					domain	tcmcs.str8	i.table_name,
+					long			i.json.arrya
+				)
+{
+	long	i.json.object
+	long	ret_val
+	
+	|rdi.table Variables
+	long no_keys
+	long no_columns
+	long int_length
+	long real_length
+	long no_cdf
+	|rdi.table.column Variables
+	long column_number
+	string column_name(20)
+	string domain_name(14)
+	long offset
+	long size
+	long dept
+	long type
+	long flag
+	string default_value
+	long flag_filter
+	long	table_id
+	
+	string col_desc(60)
+	string fldn(10) , dmy(8) 
+	
+	
+	long 	long.var 
+	double 	dbl.var
+	string 	str.var(2000)
+	string 	str.var.mb(1000)
+	
+	
+|	i.json.object = Json.newObject()
+	ret_val = rdi.table(i.table_name, no_keys,no_columns,int_length,real_length,no_cdf)
+	for column_number = (5 + no_keys) to no_columns
+		
+		ret_val = rdi.table.column(i.table_name, 
+				column_number,
+				column_name,
+				domain_name,  
+				offset, 
+				size,
+				dept,
+				type,
+				flag,
+				default_value)
+				
+		tt.field.desc(column_name, col_desc)		
+		string.scan(column_name,"%s.%s", dmy, fldn) 
+		col_desc = col_desc & "_" & fldn
+		
+		on case type
+		case DB.BYTE:	
+		case DB.INTEGER: 
+		case DB.LONG:
+		case DB.BITSET: 
+		case DB.MAIL:
+		case DB.TEXT:
+			get.var(pid, column_name, long.var)
+|			Json.setNumber(i.json.object,col_desc,long.var)
+			insert.record.in.txint012(i.doc.defi,col_desc,str$(long.var))
+			break
+		case DB.ENUM: 
+			get.var(pid, column_name, long.var)
+		    str.var = enum.descr$(domain_name, ltoe(long.var) )
+|			Json.setString(i.json.object,col_desc,str.var)
+			insert.record.in.txint012(i.doc.defi,col_desc,str.var)
+			break
+		case DB.TIME:
+			get.var(pid, column_name, long.var)
+			str.var = sprintf$("%u(%04Y/%02m/%02d) %U(%02H%x%02m%x%02s)",long.var, long.var)
+|			Json.setString(i.json.object,col_desc,str.var)
+			insert.record.in.txint012(i.doc.defi,col_desc,str.var)
+			break
+		case DB.DATE:
+			get.var(pid, column_name, long.var)
+			str.var = sprintf$("%D(%04Y/%02m/%02d)",long.var, long.var)
+|			Json.setString(i.json.object,col_desc,str.var)
+			insert.record.in.txint012(i.doc.defi,col_desc,str.var)
+			break
+		case DB.FLOAT: 
+		case DB.DOUBLE: 
+			get.var(pid, column_name, dbl.var)
+|			Json.setNumber(i.json.object,col_desc,dbl.var)
+			insert.record.in.txint012(i.doc.defi,col_desc,str$(dbl.var))
+			break
+		case DB.STRING:
+			get.var(pid, column_name, str.var)
+|			Json.setString(i.json.object,col_desc,str.var)
+			insert.record.in.txint012(i.doc.defi,col_desc,str.var)
+			break
+		case DB.MULTIBYTE:
+			get.var(pid, column_name, str.var.mb)
+|			Json.setString(i.json.object,col_desc,str.var.mb)
+			insert.record.in.txint012(i.doc.defi,col_desc,str.var.mb)
+			break
+		case DB.COMBINED:
+			break
+		default:
+			break 
+		endcase
+	endfor
+	
+|	json.add(i.json.arrya,i.json.object)
+	return(0)
+}
+
+function extern long txint.dll0010.generate.mapping.defination
+				(
+					domain	tcmcs.str30	i.document.def,
+					domain	tcmcs.str8	i.table_name
+				)
+{
+	long	ret_val
+	
+	|rdi.table Variables
+	long no_keys
+	long no_columns
+	long int_length
+	long real_length
+	long no_cdf
+	|rdi.table.column Variables
+	long column_number
+	string column_name(50)
+	string domain_name(14)
+	long offset
+	long size
+	long dept
+	long type
+	long flag
+	string default_value
+	long flag_filter
+	
+	
+	string col_desc(60)
+	string fldn(10) , dmy(8) 
+
+
+|	select	txint010.*
+|	from	txint010
+|	where	txint010._index1 ={:i.document.def}
+|	as set with 1 rows
+|	selectdo
+|		dal.set.error.message("@Document Defination Already Exists")
+|		return(DALHOOKERROR)
+|	selectempty
+|		dal.new.object("txint010")
+|		dal.set.field("txint010.dcid",i.document.def)
+|		dal.set.field("txint010.tcod",i.table_name)
+|		dal.set.field("txint010.user",logname$)
+|		dal.set.field("txint010.date",utc.num())
+|		ret_val = dal.save.object("txint010")
+|		if ret_val = 0 then
+|		else
+|			dal.set.error.message("@Error in Insert record in txint010")
+|			return(DALHOOKERROR)
+|		endif
+|	endselect 
+
+	ret_val = rdi.table(i.table_name, no_keys,no_columns,int_length,real_length,no_cdf)
+	for column_number = (5 + no_keys) to no_columns
+		
+		ret_val = rdi.table.column(i.table_name, 
+				column_number,
+				column_name,
+				domain_name,  
+				offset, 
+				size,
+				dept,
+				type,
+				flag,
+				default_value)
+				
+		tt.field.desc(column_name, col_desc)		
+		string.scan(column_name,"%s.%s", dmy, fldn) 
+		col_desc = col_desc & "_" & fldn
+		
+|		select	txint011.*
+|		from	txint011
+|		where	txint011._index1 = {:i.document.def,:column_number}
+|		as set with 1 rows
+|		selectdo
+|		selectempty
+|			dal.new.object("txint011")
+|			dal.set.field("txint011.dcid",i.document.def)
+|			dal.set.field("txint011.tcod",i.table_name)
+|			dal.set.field("txint011.lino",column_number)
+|			dal.set.field("txint011.fldn",column_name)
+|			dal.set.field("txint011.dsca",col_desc)
+|			dal.set.field("txint011.cdom",trim$(domain_name))
+|			dal.set.field("txint011.dtyp",get.field.type(type))
+|			ret_val = dal.save.object("txint011")
+|			if ret_val = 0 then
+|			else
+|				abort.transaction()
+|				return(DALHOOKERROR)
+|			endif
+|		endselect
+		
+	endfor
+	commit.transaction()
+	return(0)
+}
+
+
+function insert.record.in.txint012
+			(
+				domain	tcmcs.str30	i.dcid,
+				domain	tcdsca		i.mpid,
+				domain	tcdsca		i.valu
+			)
+{
+|	select	txint012.*
+|	from	txint012
+|	where	txint012._index1 = {:i.dcid,:i.mpid}
+|	as set with 1 rows
+|	selectdo
+|	selectempty
+|		txint012.dcid = i.dcid
+|		txint012.mpid = i.mpid
+|		txint012.valu = i.valu
+|		db.insert(ttxint012,db.skip.dupl,e)
+|	endselect
+}
+
+function domain ttadv.type get.field.type(long i.type)
+{
+	on case i.type
+		case DB.BYTE:	
+			return(ttadv.type.byte)
+		break
+		case DB.INTEGER: 
+			return(ttadv.type.integer)
+		break
+		case DB.LONG:
+			return(ttadv.type.long)
+		break
+		case DB.BITSET: 
+			return(ttadv.type.set)
+		break
+		case DB.MAIL:
+			return(ttadv.type.string.mb)
+		break
+		case DB.TEXT:
+			return(ttadv.type.text)
+		break
+		case DB.ENUM:
+			return(ttadv.type.enumerated)	
+			break
+		case DB.TIME:
+			return(ttadv.type.utc_date)
+			break
+		case DB.DATE:
+			return(ttadv.type.date)
+		break
+		case DB.FLOAT: 
+			return(ttadv.type.float)
+		break
+		case DB.DOUBLE: 
+			return(ttadv.type.double)
+			break
+		case DB.STRING:
+			return(ttadv.type.string)
+			break
+		case DB.MULTIBYTE:
+			return(ttadv.type.string.mb)
+		break
+		case DB.COMBINED:
+			return(empty)
+		break
+	endcase
+
+	return(empty)
+}

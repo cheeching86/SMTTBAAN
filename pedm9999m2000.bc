@@ -1,0 +1,318 @@
+|******************************************************************************
+|* tiedm9999m200  0  VRC B61C a  cus 
+|* Import Reference Designator
+|* Installation user                                                                                                       
+|* 2020-04-07
+|******************************************************************************
+|* Main table tiedm110 Engineering BOM, Form Type 4
+|******************************************************************************
+                                                                                
+|****************************** declaration section ***************************
+declaration:
+#include <bic_dam>
+#pragma used dll "ottdllbw"
+#pragma	used dll ottstpapihand	| Baan API Handler
+#include <bic_desktop>
+
+	table   ttiedm110	| Engineering BOM
+	table	ttiedm999	| Log File
+	table	ttiedm210	| Reference Designators by Engineering
+	table	ttiedm020	| Reference Designator by Engineering
+	table	ttcmcs090	| Reference Designators
+
+	extern  domain  tcitem          main_item, itemcode, itemcode1
+	extern	domain	tiedm.revi	rev_no, rev
+   	extern  domain  tcpono          line, log.line, previous.line
+  	extern  domain  tiedm.cmtp	cmtp
+	extern	domain	tiqbm2		qty, count.ref.qty
+	extern	domain	tcmcs.str215	msg.detail, msg.detail2
+	extern	domain	tcmcs.str60	ref.desig, ref.desig1
+   	long	ret4, ret5, ret6, ret7, ret8
+
+	
+
+	
+
+|****************************** program section ********************************
+before.program:
+	
+	import("tiedm110.eitm", main_item)
+	import("tiedm110.revi", rev_no)
+
+|****************************** group section **********************************
+
+group.1:
+init.group:
+   get.screen.defaults()
+
+
+|****************************** functions **************************************
+Functions:
+
+function extern upload.request()
+{	
+	|****************** Upload File into Server *************************
+	long	ret, ret1, count, ret2, input.fp
+	long 	check1
+	string	filename2(200)
+	string	curr.line(2048)
+	domain	tcmcs.str100	filename
+	long 	str.no, i, pos.1
+	string	temp.txt(250), instr(1)
+	string	err.msg(200)
+
+	ret1 = 0
+	
+	filename2 = "${BSE}/tmp_import/Upload_Engineering_Designator.csv"
+
+	if get.ui.mode() = 1 then
+		ret2 =  client2server("", filename2, false, false,true)
+	else
+		ret2 =  client.upload.file(filename2) 
+	endif
+
+	if ret2 <> 0 then	| Cancel Upload data
+		stop()
+	else
+		|****************** clear data******************************
+
+		|**** Log File *****
+		select * from tiedm999 for update
+		where tiedm999.eitm = tiedm999.eitm and tiedm999.rev = tiedm999.rev
+		selectdo
+			dal.destroy.object("tiedm999")
+			commit.transaction()
+		endselect
+		
+
+	endif
+
+	temp.txt = trim$(get.local.filename())
+	str.no = len(temp.txt)
+
+	for i = 1 to str.no
+	instr = temp.txt(i;1)
+	
+	if instr = "\" then
+		pos.1 = i  
+	endif
+	endfor
+
+	filename = temp.txt(pos.1+1)
+	
+	|message("File Name: %s",filename)
+
+	input.fp = seq.open(strip$(filename2),"rt")
+
+	if input.fp < 1 then
+		message("File Cannot be uploaded.")
+		return
+
+	else
+		seq.rewind(input.fp)
+
+			ret1 = seq.gets(curr.line, 2048, input.fp)
+		while ret1 = 0
+		
+			ret1 = seq.gets(curr.line, 2048, input.fp)
+			
+			check1 = string.scan(curr.line, "%s,%s,%d,%s,%f", itemcode, rev, line, ref.desig, qty)
+		
+			if check1 <> 5 then
+				message("Invalid Fields.\n\nPlease check your field in your upload file.")
+				stop()
+			endif 
+
+	
+			|***** Insert Reference Designators (tcmcs090) *****
+			if len(trim$(ref.desig)) <= 16 then
+				
+				ref.desig1 = toupper$(ref.desig)
+
+				select tcmcs090.*
+				from tcmcs090 for update
+				where tcmcs090.lcid = :ref.desig1
+				selectdo		
+					ret6 = dal.change.object("tcmcs090")
+					dal.set.field("tcmcs090.lcid", str$(toupper$(ref.desig)))
+					dal.set.field("tcmcs090.dsca", str$(ref.desig))
+					ret6 = dal.save.object("tcmcs090")
+	
+					commit.transaction()
+
+				selectempty
+					if ref.desig <> "" then
+						ret6 = dal.new.object("tcmcs090")
+						dal.set.field("tcmcs090.lcid", str$(toupper$(ref.desig)))
+						dal.set.field("tcmcs090.dsca", str$(ref.desig))
+						ret6 = dal.save.object("tcmcs090")
+	
+						commit.transaction()
+					endif
+				endselect
+			else
+				message("Reference Designator length could not be more than 17 character. Please check your upload file.")
+				message("Upload Failed.")
+				stop()
+			endif
+
+
+			|***** Insert Reference Designator by Engineering (tiedm020) *****
+			itemcode1 = "         " & trim$(itemcode)
+
+			select tiedm110.*
+			from tiedm110
+			where tiedm110.eitm = :itemcode1 and tiedm110.revi = :rev
+			selectdo
+				select tiedm020.*
+				from tiedm020 for update
+				where tiedm020.eitm = :itemcode1 and tiedm020.revi = :rev and tiedm020.lcid = :ref.desig1
+				selectdo
+					ret7 = dal.change.object("tiedm020")
+					dal.set.field("tiedm020.eitm", "         " & trim$(itemcode))
+					dal.set.field("tiedm020.revi", str$(rev))
+					dal.set.field("tiedm020.lcid", str$(toupper$(ref.desig)))
+					dal.set.field("tiedm020.dsca", str$(ref.desig))
+					ret7 = dal.save.object("tiedm020")
+					commit.transaction()
+			
+				selectempty
+					ret7 = dal.new.object("tiedm020")
+					dal.set.field("tiedm020.eitm", "         " & trim$(itemcode))
+					dal.set.field("tiedm020.revi", str$(rev))
+					dal.set.field("tiedm020.lcid", str$(toupper$(ref.desig)))
+					dal.set.field("tiedm020.dsca", str$(ref.desig))
+					ret7 = dal.save.object("tiedm020")
+					commit.transaction()
+				endselect
+			selectempty
+				ret7 = 0
+			endselect
+			
+			
+			|***** Insert Reference Designators by Engineering (tiedm210) *****	
+			select tiedm110.*
+			from tiedm110
+			where tiedm110.eitm = :itemcode1 and tiedm110.revi = :rev and tiedm110.pono = :line
+			selectdo
+	
+				if ret1 = 0 then
+					if previous.line = line then
+						count.ref.qty = count.ref.qty + qty
+					else
+						count.ref.qty = qty
+					endif
+				endif
+
+				if tiedm110.nqan >= count.ref.qty then 
+
+					select tiedm210.*
+					from tiedm210 for update
+					where tiedm210.eitm = :tiedm110.eitm and tiedm210.revi = :tiedm110.revi and tiedm210.pono = :tiedm110.pono and tiedm210.lcid = :ref.desig1
+					selectdo
+						ret8 = dal.change.object("tiedm210")
+						dal.set.field("tiedm210.eitm", tiedm110.eitm)
+						dal.set.field("tiedm210.revi", tiedm110.revi)
+						dal.set.field("tiedm210.pono", tiedm110.pono)
+						dal.set.field("tiedm210.lcid", str$(toupper$(ref.desig)))
+						dal.set.field("tiedm210.qana", str$(qty))
+						ret8 = dal.save.object("tiedm210")
+						commit.transaction()			
+					selectempty
+						ret8 = dal.new.object("tiedm210")
+						dal.set.field("tiedm210.eitm", tiedm110.eitm)
+						dal.set.field("tiedm210.revi", tiedm110.revi)
+						dal.set.field("tiedm210.pono", tiedm110.pono)
+						dal.set.field("tiedm210.lcid", str$(toupper$(ref.desig)))
+						dal.set.field("tiedm210.qana", str$(qty))
+						ret8 = dal.save.object("tiedm210")
+						commit.transaction()
+					endselect
+
+				else
+					|***** Insert Log File Record ******
+					if ret1 = 0 then
+						log.line = log.line + 1
+						msg.detail = "Sum of quantities of ref. designator exceeds E-BOM line: " & itemcode & ", " & str$(rev) & ", " & str$(line) & ", " & str$(toupper$(ref.desig)) & "."
+		
+						select tiedm999.*
+						from tiedm999
+						where tiedm999.eitm = :itemcode1 and tiedm999.rev = :rev and tiedm999.pono = :line and tiedm999.desig = :ref.desig1
+						selectdo
+						selectempty
+							ret5 = dal.new.object("tiedm999")
+							dal.set.field("tiedm999.line", str$(log.line))
+							dal.set.field("tiedm999.eitm", str$(itemcode1))
+							dal.set.field("tiedm999.rev", str$(rev))
+							dal.set.field("tiedm999.pono", str$(line))
+							dal.set.field("tiedm999.desig", str$(toupper$(ref.desig)))
+							dal.set.field("tiedm999.elog", str$(msg.detail))
+							ret5 = dal.save.object("tiedm999")
+
+							commit.transaction()
+						endselect
+					endif
+				endif
+			
+			selectempty
+		
+				ret8 = 1 
+
+				|***** Insert Log File Record ******
+				log.line = log.line + 1
+				msg.detail = "Engineering Item, Revision, Lines does not exist on E-BOM."
+		
+				select tiedm999.*
+				from tiedm999
+				where tiedm999.eitm = :itemcode1 and tiedm999.rev = :rev and tiedm999.pono = :line
+				selectdo
+				selectempty
+
+					ret5 = dal.new.object("tiedm999")
+					dal.set.field("tiedm999.line", str$(log.line))
+					dal.set.field("tiedm999.eitm", str$(itemcode1))
+					dal.set.field("tiedm999.rev", str$(rev))
+					dal.set.field("tiedm999.pono", str$(line))
+					dal.set.field("tiedm999.elog", str$(msg.detail))
+					ret5 = dal.save.object("tiedm999")
+
+					commit.transaction()
+
+				endselect				
+			endselect
+			
+			previous.line = tiedm210.pono
+
+			count = count + 1
+            	
+           		if count >= 250 then
+            		   	count = 0
+             		  	commit.transaction()
+           		endif
+		endwhile
+	 
+       		if count > 0 then
+			commit.transaction()
+       		endif
+
+		if ret6 = 0 and ret7 = 0 and ret8 = 0 then
+			message("Data Upload Successful.")
+		else 
+			message("Data Upload Failed.")
+		endif
+	
+		ret2 = seq.close(input.fp)
+		
+	endif
+
+	start.session(MODAL_OVERVIEW, "tiedm9999m100", "", "")
+	stop()
+
+}
+
+
+
+
+
+
+

@@ -1,0 +1,593 @@
+|******************************************************************************
+|* tiedm9999m000  0  VRC B61C a  cus 
+|* Import Item Code (Customize)
+|* Installation user                                                                                             
+|* 2020-03-25
+|******************************************************************************
+|* Main table tiedm110 Engineering BOM, Form Type 4
+|******************************************************************************
+                                                                                
+|****************************** declaration section ***************************
+declaration:
+#include <bic_dam>
+#pragma used dll "ottdllbw"
+#pragma	used dll ottstpapihand	| Baan API Handler
+#include <bic_desktop>
+
+	table   ttiedm110 	| Engineering BOM
+	table	ttttxt010	| Texts
+	table	ttcibd001	| Items
+	table	ttiedm010	| Engineering Items
+	table	ttiedm215	| Alternative Materials by E-BOM
+	table	ttiedm999	| Log File
+	table	ttiedm210	| Reference Designators by Engineering
+	table	ttiedm020	| Reference Designator by Engineering
+	table	ttcmcs090	| Reference Designators
+
+
+   	extern  domain  tcitem          main_item, itemcode, component, comp.item, eitem, item.code1, item.code2	
+	extern	domain	tiedm.revi	rev_no, rev
+   	extern  domain  tcpono          line, altr.line, log.line
+  	extern  domain  tiedm.cmtp	cmtp, altr.cmtp
+	extern	domain	tcleng		lgth
+	extern	domain	tcwidt		wdth
+	extern	domain	tinoun		no.of.unit
+	extern	domain	tcyesno		qdep
+	extern	domain	tiqbm2		qty
+	extern	domain	tcalpr		altr.prio
+	extern	domain	tctxtn		ltxt, final.txt
+	extern	domain	tcwght		altr.prio1
+	extern	domain	tcmcs.str215	msg.detail, msg.detail2
+	extern	domain	tcmcs.str60	ref.desig, ref.desig1
+   	long	max.txt.no, insert.max.txt, ret9, ret10, ret11, ret3, ret4, ret5, ret6, ret7, ret8
+
+	string type(50)
+	string line.txt(1000)
+	string err.message(300)	
+
+
+|****************************** program section ********************************
+before.program:
+	
+	import("tiedm110.eitm", main_item)
+	import("tiedm110.revi", rev_no)
+
+
+|****************************** group section **********************************
+
+group.1:
+init.group:
+   get.screen.defaults()
+
+
+|****************************** functions **************************************
+Functions:
+
+function extern upload.request()
+{		
+	|****************** Upload File into Server *************************
+	long	ret, ret1, count, ret2, input.fp
+	long 	check1
+	string	filename2(200)
+	string	curr.line(2048)
+	domain	tcmcs.str100	filename
+	long 	str.no, i, pos.1
+	string	temp.txt(250), instr(1)
+	string	err.msg(200)
+
+	ret1 = 0
+	
+	filename2 = "${BSE}/tmp_import/Upload_Engineering_Items.csv"
+
+	if get.ui.mode() = 1 then
+		ret2 =  client2server("", filename2, false, false,true)
+	else
+		ret2 =  client.upload.file(filename2) 
+	endif
+
+	if ret2 <> 0 then	| Cancel Upload data
+		stop()
+	else
+
+		|****************** clear data******************************
+		|**** E-BOM *****
+		|select * from tiedm110 for update
+		|where tiedm110.eitm = :main_item and tiedm110.revi = :rev_no
+		|selectdo
+		|	dal.destroy.object("tiedm110")
+		|	commit.transaction()
+		|endselect
+
+		|**** Alternative Materials by E-BOM *****
+		select * from tiedm215 for update
+		where tiedm215.eitm = :main_item and tiedm215.revi = :rev_no
+		selectdo
+			dal.destroy.object("tiedm215")
+			commit.transaction()
+		endselect
+
+		|**** Log File *****
+		select * from tiedm999 for update
+		where tiedm999.eitm = tiedm999.eitm and tiedm999.rev = tiedm999.rev
+		selectdo
+			dal.destroy.object("tiedm999")
+			commit.transaction()
+		selectempty
+			
+			
+		endselect
+		
+		|**** Reference Designator by Engineering *****
+|		select * from tiedm020 for update
+|		where tiedm020.eitm = :main_item and tiedm020.revi = :rev_no
+|		selectdo
+|			dal.destroy.object("tiedm020")
+|			commit.transaction()
+|		endselect
+
+		|**** Reference Designators by Engineering *****
+|		select * from tiedm210 for update
+|		where tiedm210.eitm = :main_item and tiedm210.revi = :rev_no and tiedm210.pono = :line
+|		selectdo
+|			dal.destroy.object("tiedm210")
+|			commit.transaction()
+|		endselect
+	endif
+
+	temp.txt = trim$(get.local.filename())
+	str.no = len(temp.txt)
+
+	for i = 1 to str.no
+	instr = temp.txt(i;1)
+	
+	if instr = "\" then
+		pos.1 = i  
+	endif
+	endfor
+
+	filename = temp.txt(pos.1+1)
+	
+	|message("File Name: %s",filename)
+
+	input.fp = seq.open(strip$(filename2),"rt")
+
+	if input.fp < 1 then
+		message("File Cannot be uploaded.")
+		return
+
+	else
+		seq.rewind(input.fp)
+
+			ret1 = seq.gets(curr.line, 2048, input.fp)
+		while ret1 = 0
+		
+			ret1 = seq.gets(curr.line, 2048, input.fp)
+			
+			|check1 = string.scan(curr.line, "%s,%s,%d,%s,%s,%f,%s,%s", itemcode, rev, line, type, component, qty, ref.desig, line.txt)
+			check1 = string.scan(curr.line, "%s,%s,%d,%s,%s,%f", itemcode, rev, line, type, component, qty)
+		
+			if check1 <> 6 then
+				message("Invalid Fields.\n\nPlease check your field in your upload file.")
+				stop()
+			endif 
+
+	
+			|***** Insert Reference Designators (tcmcs090) *****
+|			if len(trim$(ref.desig)) <= 16 then
+|				
+|				ref.desig1 = toupper$(ref.desig)
+|
+|				select tcmcs090.*
+|				from tcmcs090 for update
+|				where tcmcs090.lcid = :ref.desig1
+|				selectdo		
+|					ret6 = dal.change.object("tcmcs090")
+|					dal.set.field("tcmcs090.lcid", str$(toupper$(ref.desig)))
+|					dal.set.field("tcmcs090.dsca", str$(ref.desig))
+|					ret6 = dal.save.object("tcmcs090")
+|	
+|					commit.transaction()
+|
+|				selectempty
+|					if ref.desig <> "" then
+|						ret6 = dal.new.object("tcmcs090")
+|						dal.set.field("tcmcs090.lcid", str$(toupper$(ref.desig)))
+|						dal.set.field("tcmcs090.dsca", str$(ref.desig))
+|						ret6 = dal.save.object("tcmcs090")
+|	
+|						commit.transaction()
+|					endif
+|				endselect
+|			else
+|				message("Reference Designator length could not be more than 17 character.")
+|				stop()
+|			endif
+
+
+			|***** Check E-Item Revision *******
+			eitem = "         " & itemcode
+			comp.item = "         " & component
+
+			select tiedm100.*
+			from tiedm100
+			where tiedm100.eitm = :eitem and tiedm100.revi = :rev
+			selectdo
+			selectempty
+				message("E-Item Revision for " & rev & " not found. Please maintain first.")
+				stop()
+			endselect
+					
+
+			|***** Insert Log File Record ******
+			if ret1 = 0 then		
+
+				|** Check General-Items ****
+				select tcibd001.*
+				from tcibd001
+				where tcibd001.item = :comp.item
+				selectdo
+				selectempty
+					log.line = log.line + 1
+					msg.detail = "Component not present as general item for type " & str$(type) & " and line " & str$(line) & "."
+		
+					select tiedm999.*
+					from tiedm999
+					where tiedm999.eitm = :eitem and tiedm999.rev = :rev and tiedm999.pono = :line and tiedm999.type = :type and tiedm999.comp = :comp.item
+					selectdo
+					selectempty
+						ret4 = dal.new.object("tiedm999")
+						dal.set.field("tiedm999.line", str$(log.line))
+						dal.set.field("tiedm999.eitm", str$(eitem))
+						dal.set.field("tiedm999.rev", str$(rev))
+						dal.set.field("tiedm999.pono", str$(line))
+						dal.set.field("tiedm999.type", str$(type))
+						dal.set.field("tiedm999.comp", str$(comp.item))
+						dal.set.field("tiedm999.elog", str$(msg.detail))
+						ret4 = dal.save.object("tiedm999")
+
+						commit.transaction()
+					endselect
+						
+				endselect
+
+				|** Check Alternative Materila by E-BOM ****
+				|if trim$(type) = "@" then
+
+				|	select tiedm215.*
+				|	from tiedm215
+				|	where tiedm215.eitm = :eitem and tiedm215.revi = :rev and tiedm215.pono = :line and tiedm215.aitm = :comp.item
+				|	selectdo
+						|message("Item A: %s", eitem & " " & comp.item)
+				|		log.line = log.line + 1
+				|		msg.detail2 = "Item " & trim$(comp.item) & " already used as alternative materials."
+		
+				|		select tiedm999.*
+				|		from tiedm999
+				|		where tiedm999.eitm = :eitem and tiedm999.rev = :rev and tiedm999.pono = :line and tiedm999.type = :type and tiedm999.comp = :comp.item
+				|		selectdo
+				|		selectempty
+				|			ret5 = dal.new.object("tiedm999")
+				|			dal.set.field("tiedm999.line", str$(log.line))
+				|			dal.set.field("tiedm999.eitm", str$(eitem))
+				|			dal.set.field("tiedm999.rev", str$(rev))
+				|			dal.set.field("tiedm999.pono", str$(line))
+				|			dal.set.field("tiedm999.type", str$(type))
+				|			dal.set.field("tiedm999.comp", str$(comp.item))
+				|			dal.set.field("tiedm999.elog", str$(msg.detail2))
+				|			ret5 = dal.save.object("tiedm999")
+
+				|			commit.transaction()
+				|		endselect
+				|	selectempty
+						|message("Item B: %s", eitem & " " & comp.item)
+				|	endselect
+				|endif
+
+				
+
+			|****** Type (Alternative Item or Normal Item) **********************
+			type = type
+			altr.cmtp = tiedm.cmtp.item
+			item.code2 = "         " & itemcode
+			
+			
+
+			if type = "@" then		
+				
+				|********** Insert Alternative Materials by E-BOM **************************
+				select tiedm215.*
+				from tiedm215 for update
+				where tiedm215.eitm = :item.code2 and tiedm215.revi = :rev and tiedm215.pono = :line and tiedm215.altr = 10 |altr.line
+				selectdo
+
+					altr.line = altr.line + 10
+					altr.prio1 = altr.prio1 + 1
+
+|message("B: %s", itemcode & " " & str$(line) & " " & str$(altr.line))
+
+					if altr.prio1 = 1 then
+						altr.prio = tcalpr.one
+					else if altr.prio1 = 2 then
+						altr.prio = tcalpr.two
+					else if altr.prio1 = 3 then
+						altr.prio = tcalpr.three
+					else if altr.prio1 = 4 then
+						altr.prio = tcalpr.four
+					else if altr.prio1 = 5 then
+						altr.prio = tcalpr.five
+					else if altr.prio1 = 6 then
+						altr.prio = tcalpr.six
+					else if altr.prio1 = 7 then
+						altr.prio = tcalpr.seven
+					else if altr.prio1 = 8 then
+						altr.prio = tcalpr.eight
+					else if altr.prio1 = 9 then
+						altr.prio = tcalpr.nine
+					endif
+					endif
+					endif
+					endif
+					endif
+					endif
+					endif
+					endif
+					endif
+
+
+
+					ret3 = dal.new.object("tiedm215")
+					|ret3 = dal.change.object("tiedm215")
+		
+					dal.set.field("tiedm215.eitm", "         " & strip$(itemcode))
+					dal.set.field("tiedm215.revi", str$(rev))
+					dal.set.field("tiedm215.pono", str$(line))
+					dal.set.field("tiedm215.altr", str$(altr.line))
+					dal.set.field("tiedm215.cmtp", str$(altr.cmtp))
+					dal.set.field("tiedm215.prio", str$(altr.prio))
+					dal.set.field("tiedm215.aitm", "         " & strip$(component))
+					ret3 = dal.save.object("tiedm215")
+					
+					commit.transaction()
+
+				selectempty
+					
+					altr.line =  10
+					altr.prio1 =  1
+
+|message("A: %s", itemcode & " " & str$(line) & " " & str$(altr.line))
+
+					if altr.prio1 = 1 then
+						altr.prio = tcalpr.one
+					else if altr.prio1 = 2 then
+						altr.prio = tcalpr.two
+					else if altr.prio1 = 3 then
+						altr.prio = tcalpr.three
+					else if altr.prio1 = 4 then
+						altr.prio = tcalpr.four
+					else if altr.prio1 = 5 then
+						altr.prio = tcalpr.five
+					else if altr.prio1 = 6 then
+						altr.prio = tcalpr.six
+					else if altr.prio1 = 7 then
+						altr.prio = tcalpr.seven
+					else if altr.prio1 = 8 then
+						altr.prio = tcalpr.eight
+					else if altr.prio1 = 9 then
+						altr.prio = tcalpr.nine
+					endif
+					endif
+					endif
+					endif
+					endif
+					endif
+					endif
+					endif
+					endif
+
+					ret3 = dal.new.object("tiedm215")
+					|ret3 = dal.change.object("tiedm215")
+		
+					dal.set.field("tiedm215.eitm", "         " & strip$(itemcode))
+					dal.set.field("tiedm215.revi", str$(rev))
+					dal.set.field("tiedm215.pono", str$(line))
+					dal.set.field("tiedm215.altr", str$(altr.line))
+					dal.set.field("tiedm215.cmtp", str$(altr.cmtp))
+					dal.set.field("tiedm215.prio", str$(altr.prio))
+					dal.set.field("tiedm215.aitm", "         " & strip$(component))
+					ret3 = dal.save.object("tiedm215")
+					
+					commit.transaction()
+					
+				endselect
+
+				
+				|if ret3 <> 0 then
+				|	message("Alternative Material insert failed. For Line " & str$(line) & ".")
+				|endif
+
+			else		 
+				|********** Insert Engineering BOM Details **************************
+				cmtp = tiedm.cmtp.item
+				item.code1 = "         " & strip$(itemcode)
+	
+				select tiedm110.*
+				from tiedm110 for update
+				|where tiedm110.eitm = :main_item and tiedm110.revi = :rev_no and tiedm110.pono = :line
+				where tiedm110.eitm = :item.code1 and tiedm110.revi = :rev and tiedm110.pono = :line
+				selectdo
+				selectempty
+
+					if trim$(main_item) = trim$(itemcode) and trim$(rev_no) = trim$(rev) then
+		
+						line.txt = line.txt
+
+						|insert.text.A()
+
+						ret = dal.new.object("tiedm110")
+		
+						dal.set.field("tiedm110.eitm", "         " & strip$(itemcode))
+						dal.set.field("tiedm110.revi", str$(rev))
+						dal.set.field("tiedm110.pono", str$(line))
+						dal.set.field("tiedm110.cmtp", str$(cmtp))
+						dal.set.field("tiedm110.comp", "         " & strip$(component))
+						dal.set.field("tiedm110.nqan", str$(qty))
+						|dal.set.field("tiedm110.txta", str$(ltxt))
+						ret = dal.save.object("tiedm110")
+
+						commit.transaction()
+
+					else
+						
+						|message("Please check Engineering Item and Revision for upload data.")		
+						|stop()
+
+						line.txt = line.txt
+
+						|insert.text.A()
+
+						ret = dal.new.object("tiedm110")
+		
+						dal.set.field("tiedm110.eitm", "         " & strip$(itemcode))
+						dal.set.field("tiedm110.revi", str$(rev))
+						dal.set.field("tiedm110.pono", str$(line))
+						dal.set.field("tiedm110.cmtp", str$(cmtp))
+						dal.set.field("tiedm110.comp", "         " & strip$(component))
+						dal.set.field("tiedm110.nqan", str$(qty))
+						|dal.set.field("tiedm110.txta", str$(ltxt))
+						ret = dal.save.object("tiedm110")
+
+						commit.transaction()
+
+					endif
+				endselect
+
+
+				|***** Insert Reference Designator by Engineering (tiedm020) *****
+|				select tiedm020.*
+|				from tiedm020 for update
+|				where tiedm020.eitm = :tiedm110.eitm and tiedm020.revi = :tiedm110.revi and tiedm020.lcid = :ref.desig1
+|				selectdo			
+|				selectempty
+|					ret7 = dal.new.object("tiedm020")
+|					dal.set.field("tiedm020.eitm", tiedm110.eitm)
+|					dal.set.field("tiedm020.revi", tiedm110.revi)
+|					dal.set.field("tiedm020.lcid", str$(toupper$(ref.desig)))
+|					dal.set.field("tiedm020.dsca", str$(ref.desig))
+|					ret7 = dal.save.object("tiedm020")
+|					commit.transaction()
+|				endselect
+|
+|				|***** Insert Reference Designators by Engineering (tiedm210) *****
+|				select tiedm210.*
+|				from tiedm210 for update
+|				where tiedm210.eitm = :tiedm110.eitm and tiedm210.revi = :tiedm110.revi and tiedm210.pono = :tiedm110.pono and tiedm210.lcid = :ref.desig1
+|				selectdo			
+|				selectempty
+|					ret8 = dal.new.object("tiedm210")
+|					dal.set.field("tiedm210.eitm", tiedm110.eitm)
+|					dal.set.field("tiedm210.revi", tiedm110.revi)
+|					dal.set.field("tiedm210.pono", tiedm110.pono)
+|					dal.set.field("tiedm210.lcid", str$(toupper$(ref.desig)))
+|					dal.set.field("tiedm210.qana", tiedm110.nqan)
+|					ret8 = dal.save.object("tiedm210")
+|					commit.transaction()
+|				endselect
+
+
+			endif
+			endif | endif for ret1
+
+			count = count + 1
+            	
+           		if count >= 250 then
+            		   	count = 0
+             		  	commit.transaction()
+           		endif
+		endwhile
+		 
+       		if count > 0 then
+			commit.transaction()
+       		endif
+
+		if ret = 0 and ret9 = 0 and ret10 = 0 and ret11 = 0 then
+			message("Data Upload Successful.")
+		else 
+			dal.get.error.message(err.msg)
+			message("Data Upload Failed.")
+			message(err.msg) 
+		endif
+	
+		ret2 = seq.close(input.fp)
+		
+	endif
+	
+
+	start.session(MODAL_OVERVIEW, "tiedm9999m100", "", "")
+	stop()
+}
+	
+
+|function insert.text.A()
+|{
+|	|****** Lines Text ***********
+|
+|	if trim$(line.txt) = "" then
+|		ltxt = 0
+|	else
+|		select max(tttxt010.ctxt):max.txt.no
+|		from tttxt010
+|		where tttxt010.ctxt > 0
+|		selectdo
+|		endselect
+|				
+|		insert.max.txt = max.txt.no + 1
+|
+|		select tttxt010.*
+|		from tttxt010 for update
+|		where tttxt010.ctxt = :insert.max.txt
+|		selectdo
+|			ret9 = dal.change.object("tttxt010")	
+|			dal.set.field("tttxt010.ctxt", str$(insert.max.txt))
+|			dal.set.field("tttxt010.clan", str$(2))
+|			dal.set.field("tttxt010.seqe", str$(1))
+|			dal.set.field("tttxt010.text",str$(line.txt))
+|			ret9 = dal.save.object("tttxt010")
+|
+|			final.txt = insert.max.txt
+|		selectempty
+|
+|			ret10 = dal.new.object("tttxt001")	
+|			dal.set.field("tttxt001.ctxt", str$(insert.max.txt))
+|			dal.set.field("tttxt001.opwd", "text")
+|			dal.set.field("tttxt001.txtg", "text")
+|			ret10 = dal.save.object("tttxt001")
+|
+|			ret11 = dal.new.object("tttxt002")	
+|			dal.set.field("tttxt002.ctxt", str$(insert.max.txt))
+|			dal.set.field("tttxt002.clan", str$(2))
+|			dal.set.field("tttxt002.kwd1", "tccus010.txtb")
+|			dal.set.field("tttxt002.nlin", str$(1))
+|			ret11 = dal.save.object("tttxt002")
+|
+|			ret9 = dal.new.object("tttxt010")	
+|			dal.set.field("tttxt010.ctxt", str$(insert.max.txt))
+|			dal.set.field("tttxt010.clan", str$(2))
+|			dal.set.field("tttxt010.seqe", str$(1))
+|			dal.set.field("tttxt010.text", str$(line.txt))
+|			ret9 = dal.save.object("tttxt010")
+|
+|			final.txt = insert.max.txt
+|		endselect	
+|
+|		|if ret9 = 0 and ret10 = 0 and ret11 = 0 then
+|		|	message("Text Data Upload Successful.")
+|		|else 
+|		|	dal.get.error.message(err.message)
+|		|	message("Text Data Upload Failed.")
+|		|	message(err.message) 
+|		|endif
+|	
+|		ltxt = final.txt
+|	endif
+|}
+

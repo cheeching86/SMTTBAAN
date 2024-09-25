@@ -1,0 +1,127 @@
+|******************************************************************************
+|* ttcmcs122dll999  0  VRC B61O a  ext 
+|* RTS Warehouse Order
+|* JH Chen
+|* Jul 7 24 [18:08]
+|******************************************************************************
+|* Script Type: General Library
+|******************************************************************************
+
+table	twhinh200 
+
+#pragma used dll ottstpapihand
+#pragma used dll ottdllbw
+
+function extern string warehouse_order(
+	domain tcrefa i_kitlist,
+	domain tcitem i_item, 
+	long i_qty,
+	domain tccshp i_shipfrom.code, 
+	domain tcseri i_series,
+	domain tccshp i_shipto.code,
+	long i_date
+	)
+{
+                DllUsage
+                Expl      : AFS to transfer WMS warehouse issue into InforLN Warehouse Order (MTR) 
+                Pre       : NA
+                Post      : NA
+                Input     :i_kitlist -> Input from CIG WMS inbound order
+                           i_item -> RTS Item
+						   i_qty -> RTS Qty
+                Output :
+                                o.error -> Error Msg
+
+                Return  : Warehouse Order Running Number 
+                EndDllUsage
+               
+                string	pr.device(8),orno(10) 
+				domain tcmcs.str100 o.error
+
+                o.error = ""
+    			pr.device = "D"
+               
+				
+				| *******Easy Entry Warehousing Order******* |
+
+				if isspace(i_kitlist) then
+ 					return("No Kitlist Found")
+				else
+
+					select whinh200.orno
+					from whinh200
+					where whinh200.refe = :i_kitlist
+					selectdo
+						orno = trim$(whinh200.orno)
+						
+					selectempty
+						orno = ""
+					endselect
+
+					
+					stpapi.form.command("whinh2100m000", 5, "start.easy.order.entry", o.error)
+					
+					if not isspace(o.error) then
+						return(o.error)	
+					else
+					
+						stpapi.put.field("whinh2202m000", "order.number", orno)
+						stpapi.put.field("whinh2202m000", "order.origin", str$(72))
+						stpapi.put.field("whinh2202m000", "item.segment.1", "         ")
+						stpapi.put.field("whinh2202m000", "item.segment.2",str$(i_item))
+						stpapi.put.field("whinh2202m000", "qty.storage.unit", str$(i_qty))
+						stpapi.put.field("whinh2202m000", "shipfrom.code", str$(i_shipfrom.code))
+						stpapi.put.field("whinh2202m000", "item",str$(i_item))
+						stpapi.put.field("whinh2202m000", "shipto.code", str$(i_shipto.code))
+					    stpapi.put.field("whinh2202m000", "shipto.loca", "")
+						stpapi.put.field("whinh2202m000", "series", str$(i_series))	
+						if i_date > 0 then 		
+						stpapi.put.field("whinh2202m000", "delivery.date", str$(i_date))
+						stpapi.put.field("whinh2202m000", "receipt.date", str$(i_date))
+						endif
+						
+						| Start
+						|stpapi.handle.subproc("whinh2202m000", "tcmcs0150m000", "add")
+						stpapi.zoom.option("whinh2202m000", 30, "tcmcs0150m000", o.error)
+						stpapi.put.field("tcmcs0150m000", "tcmcs050.seri", "W01")
+						stpapi.continue.process("tcmcs0150m000", o.error)
+						stpapi.end.session("tcmcs0150m000")
+
+						| End
+						|stpapi.put.field("whinh2202m000", "order.type", str$("W01"))
+						stpapi.put.field("whinh2202m000", "order.ref", i_kitlist)
+						stpapi.put.field("whinh2202m000", "ord.line.ref", i_kitlist)
+				
+						stpapi.set.report("whinh2202m000", "rwhinh220211000", pr.device, o.error)
+						if not isspace(o.error) then
+							return(o.error)
+						else
+							stpapi.form.command("whinh2202m000", 5, "exec.cont.process", o.error)
+							if not isspace(o.error) then
+							return(o.error)
+							else
+								stpapi.end.session("whinh2202m000",o.error)
+								stpapi.end.session("whinh2100m000",o.error)
+								if not isspace(o.error) then
+								return(o.error)
+								else
+									select whinh200.orno
+									from whinh200
+									where whinh200.refe = :i_kitlist
+									group by whinh200.orno
+									selectdo
+										o.error = whinh200.orno
+									selectempty
+										o.error = "No return! Please call InforLN Supportor"
+									endselect
+
+									return(o.error)
+
+								endif
+							endif
+						endif
+					endif
+				endif
+
+
+}

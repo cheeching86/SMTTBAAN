@@ -1,0 +1,302 @@
+|******************************************************************************
+|* ticst0404m000   VRC B61C a  smt 
+|* Print Material to Issue for Production Order List
+|* 10-09-2020 [10:00] 
+|* Asyraf
+|******************************************************************************
+
+|****************************** declaration section ***************************
+
+declaration:
+#pragma	used dll	ottstpapihand	| Baan API Handler
+#include <bic_dam>
+#pragma used dll "ottdllbw"
+
+	table	ttcibd001	| Item General
+	table	ttcibd200	| Items - Ordering
+	table	tticst050	| Maintain Alternative Estimated Materials
+	table	ttisfc010	| Production Order Operations
+	table	ttisfc001	| Production Orders
+	table	twhinr140	| Stock Point Inventory
+	table	twhwmd210	| Warehouse - Item Data
+	table	twhwmd215	| Warehouse - Quantity
+	table	twhinr900	| Balance On Hand by Production Orders
+	table	ttcmcs003	| Warehouses
+
+	
+	domain tcqcp1		issue.qty, bohcf, qpa, vissue.qty
+	domain	tcmcs.str30	start.date, end.date, current.date
+	domain	tccwoc		work_center
+	domain	tcitem		alternative.item
+	extern	domain	tcitem		model, part.item, alternative.item
+	extern	domain	tcdsca		model.name, part.desc, alternative.desc
+	extern	domain	tiqep1		lot.size
+	extern	domain	tccuni		order.unit, qpa.unit
+	extern	domain	tcpdno		production.order, prod
+	extern	domain	tiedm.revi	rev
+	extern	domain	tctxtn		remarks
+	extern	domain	tcpono		pono
+	extern	domain	tcqiv1		bal.on.hand.bf, qty.econ
+	extern	domain	tcqiv1		bal.on.hand.bf.alt
+	extern	domain	tiqcp1		req
+	extern	domain	tcopno		operation
+	extern	domain	whdate		fld.date
+	extern	domain	whdate		fld.date.alt
+	extern	domain	whcwar		warehouse, update.new.WH
+	extern	domain	tccwoc		line.no
+	extern	domain	tccshp		shipfrom.code
+	extern	domain	tcinvt.date	i.dat
+	
+	
+	long	i, t, tot.num, j, ret, ret1
+	domain	tcitem		item.var(1) based, raw.item, temp_item
+string substr.item(50)
+|************************************Before.program************************************************
+before.program:
+	free.mem(item.var)
+
+	i = 0
+	t = 1
+	j = 0
+
+|************************************Header************************************************
+header.1:
+before.layout:
+	start.date = sprintf$("%u(%02d/%02m/%04Y)", tisfc001.prdt)
+	end.date = sprintf$("%u(%02d/%02m/%04Y)", tisfc001.rdld)
+
+
+|************************************ Before Layout ************************************************
+before.ticst001.pdno.1:
+before.layout:
+	
+	current.date = sprintf$("%u(%02d/%02m/%04Y)", utc.num())
+
+	select tisfc001.*
+	from tisfc001
+	where tisfc001.pdno = :ticst001.pdno
+	selectdo
+		line.no = tisfc001.line.no
+		model = tisfc001.mitm
+		lot.size = tisfc001.qrdr
+		production.order = tisfc001.pdno
+		rev = tisfc001.revi
+		remarks = tisfc001.txta
+	endselect
+
+	select tcibd001.*
+	from tcibd001
+	where tcibd001.item = :model |tisfc001.mitm
+	selectdo
+		model.name = tcibd001.dsca
+		order.unit = tcibd001.cuni
+	endselect
+
+
+
+|*******************************************Detail Layout************************************************
+detail.1:
+before.layout:
+	
+	pono = ticst001.pono
+	part.item = ticst001.sitm
+	req = ticst001.qune
+	raw.item = ""
+
+
+
+	| CC HNG 20 DEC 2023 checking BOM List
+	select ticst050.*
+	from ticst050
+	where ticst050.pdno = :ticst001.pdno and ticst050.pono = :ticst001.pono
+	selectdo		
+		substr.item = str.substring$(ticst001.sitm, 10, 15)
+		| message("Test 1 %s",substr.item)
+		if substr.item <> "54-62" and substr.item <> "A162-" then
+			select ticst050.*
+			from ticst050
+			where ticst050.pdno = :ticst001.pdno and ticst050.pono = :ticst001.pono and ticst050.aitm = :ticst001.sitm
+			selectdo
+			selectempty
+				message("Line: %s.This item not found in BOM and alternative list",pono)  
+				stop() 
+			endselect
+		endif
+
+	endselect
+
+	|select ticst050.*
+	|from ticst050
+	|where ticst050.pdno = :ticst001.pdno and ticst050.pono = :ticst001.pono
+	|selectdo
+	|	alternative.item = ticst050.aitm
+
+	|	if alternative.item <> part.item then
+	
+	|		if alternative.item <> "" then
+	|			i = i + 1
+	|			alloc.mem(item.var, 47, i)
+	|			item.var(1,i) = alternative.item
+	|			raw.item = ticst001.sitm
+	|		endif
+	|	endif	
+	|endselect
+
+
+	select tcibd001.*
+	from tcibd001
+	where tcibd001.item = :part.item |ticst001.sitm
+	selectdo
+		part.desc = tcibd001.dsca
+		qpa.unit = tcibd001.cuni
+	endselect
+
+
+	
+
+
+	|***** Issue Qty + QPA + BOH C/F *****************
+	shipfrom.code = ticst001.cwar
+
+	|***** Add by Asyraf 8 September 2020 *****************
+	select whwmd215.*
+	from whwmd215
+	where whwmd215.cwar = :tisfc001.line.no and whwmd215.item = :ticst001.sitm
+	selectdo	
+		bal.on.hand.bf = whwmd215.qhnd + whwmd215.qord - whwmd215.qall
+		qty.econ = whwmd215.qhnd + whwmd215.qord - whwmd215.qall
+		selectempty                                        
+			bal.on.hand.bf = 0
+			qty.econ = 0
+	endselect
+
+
+	select tcibd200.*
+		from tcibd200
+		where tcibd200.item = :ticst001.sitm
+		selectdo
+			vissue.qty = (round(((ticst001.qune - qty.econ)/tcibd200.oqmf),0,2)) * tcibd200.oqmf						
+						
+		selectempty                                        
+			vissue.qty = req - bal.on.hand.bf 
+	endselect
+	
+	if vissue.qty <= 0 then
+		
+		issue.qty = 0
+		
+	else
+
+		select tcibd200.*
+		from tcibd200
+		where tcibd200.item = :ticst001.sitm
+		selectdo
+			issue.qty = (round(((ticst001.qune - qty.econ)/tcibd200.oqmf),0,2)) * tcibd200.oqmf						
+						
+		selectempty                                        
+			issue.qty = req - bal.on.hand.bf 
+		endselect
+	endif
+
+	|*****if bal.on.hand.bf >= req then
+	|*****	issue.qty = 0	
+	|*****else
+
+		
+	|*****endif
+		
+
+
+	qpa = ticst001.ques/tisfc001.qrdr
+
+
+	select whwmd215.*
+	from whwmd215
+	where whwmd215.cwar = :tisfc001.line.no and whwmd215.item = :ticst001.sitm
+	selectdo	 
+		|*****bal.on.hand.bf = whwmd215.qhnd	          		|************* 9 October 2020 by Asyraf
+		bal.on.hand.bf = whwmd215.qhnd + whwmd215.qord - whwmd215.qall	|************* 9 October 2020 by Asyraf
+		qty.econ = whwmd215.qhnd + whwmd215.qord - whwmd215.qall
+		
+		|******bohcf = issue.qty - (req - bal.on.hand.bf) 		|************* 9 September 2020 by Asyraf
+		bohcf = bal.on.hand.bf + issue.qty - req 
+	
+	|******selectempty	 						|************* 9 September 2020 by Asyraf
+		|******bohcf = issue.qty - (req - bal.on.hand.bf)		|************* 9 September 2020 by Asyraf
+		|******bohcf = bal.on.hand.bf + issue.qty - req  		|************* 9 September 2020 by Asyraf
+		selectempty
+		bal.on.hand.bf = 0
+		qty.econ = 0
+		bohcf = 0
+
+	endselect
+
+
+	
+
+detail.2:
+before.layout:
+	if raw.item = ticst001.sitm then
+
+		for tot.num = t to i	
+			alternative.item = item.var(1, tot.num)
+			break
+		endfor
+
+		lattr.print = true
+	else
+		lattr.print = false
+	endif
+
+	if (i = 0) or (i = t) then
+		i = 0
+		t = 1
+		free.mem(item.var)
+	endif
+
+	select tcibd001.*
+	from tcibd001
+	where tcibd001.item = :alternative.item
+	selectdo
+		alternative.desc = tcibd001.dsca
+	endselect
+
+	|*****BOH.bf for Alternative Item**************
+	select whwmd215.*
+	from whwmd215
+	where whwmd215.cwar = :tisfc001.line.no 
+	and whwmd215.item = :alternative.item
+	selectdo
+		select whwmd215.*
+		from whwmd215
+		where whwmd215.cwar = :tisfc001.line.no 
+		and whwmd215.item = :alternative.item 
+		selectdo	
+			bal.on.hand.bf.alt = whwmd215.qhnd
+		selectempty
+		endselect
+	selectempty
+		bal.on.hand.bf.alt = 0
+	endselect
+
+
+after.layout:
+	if i <> 0 then
+		if i <> t then
+			t = t + 1
+			layout.again()
+		endif
+	endif
+
+
+after.program:
+	free.mem(item.var)
+
+|************************************After Layout************************************************
+
+
+
+
+|************************************Functiont************************************************
+
+functions:

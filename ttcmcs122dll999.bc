@@ -1,0 +1,53 @@
+|******************************************************************************
+|* ttcmcs122dll999  0  VRC B61O a  ext 
+|* Attentions
+|* JH Chen
+|* 25-05-23 [21:50]
+|******************************************************************************
+|* Script Type: General Library
+|******************************************************************************
+
+table ttcmcs122
+
+
+
+#pragma used dll ottstpapihand
+#pragma used dll ottdllbw
+
+function extern string Insert_HSCode(Domain tcmcs.catt i.catt, Domain tcmcs.st70m i.dsca,
+ref          domain tcmcs.str100       o.error)
+{
+                DllUsage
+                Expl      : AFS to generate CRM attentions 
+                Pre       : NA
+                Post      : NA
+                Input     :i.catt -> Attention Code
+                           i.dsca -> Attention Description
+                Output :
+                                o.error -> Error Msg
+
+                Return  : Add Attention 
+                EndDllUsage
+               
+                long retval
+                               
+                domain tcpdno  v.result
+
+                o.error = ""
+                v.result = "OK"
+    
+                stpapi.form.command("tcmcs1122m000", 5, "exec.add.set",o.error)
+                if not isspace(o.error) then
+                                return("")
+                endif
+                stpapi.put.field("tcmcs1122m000", "tcmcs122.catt", trim$(i.catt))
+                stpapi.put.field("tcmcs1122m000","tcmcs122.dsca",trim$(i.dsca))
+               
+                retval = stpapi.insert( "tcmcs1122m000", 1, o.error )
+
+                stpapi.end.session("tcmcs1122m000", o.error)
+         
+                return(v.result)
+               
+
+}

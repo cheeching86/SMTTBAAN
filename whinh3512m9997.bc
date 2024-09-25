@@ -1,0 +1,229 @@
+|******************************************************************************
+|* tiedm9999m000  0  VRC B61C a  cus 
+|* Import Warehousing Receipt (Customize)
+|* CC HNG                                                                                         
+|* 09-09-2024
+|******************************************************************************
+|* Main table whinh310 Receipt Order Line Form
+|******************************************************************************
+                                                                                
+|****************************** declaration section ***************************
+declaration:
+#include <bic_dam>
+#include <bic_cmf>
+
+#pragma used dll ottdllbw
+#pragma	used dll ottstpapihand	| Baan API Handler
+#include <bic_desktop>
+
+	table   twhinh310	| Warehousing Receipt
+	table	twhinh312	| Receipt Lines
+	| table	ttdpur401
+	| table	ttdpur406	
+ 	extern  domain  whinh.shpm rcno
+
+|****************************** program section ********************************
+before.program:
+	import("whinh310.rcno", rcno)
+
+|****************************** group section **********************************
+
+group.1:
+init.group:
+   get.screen.defaults()
+|****************************** functions **************************************
+Functions:
+
+ function extern upload.trans.item()
+ {		
+ 	long	ret, ret1, ret2, input.fp,check1,str.no, i, pos.1,count,i.line,dd,mm,yy
+ 	string	filename2(200),curr.line(2048), temp.txt(250), instr(1),rcln(10)
+	domain	tcmcs.str100	filename
+	string	pr.device(8)
+ 	domain  tcmcs.str100	o.message, o.error
+	domain  whinh.shpm		o.rcno
+	domain  tcorno po.number
+	domain	whltc.ltbp	i.business_partner_lot
+	| domain	tcmcs.str100	i.business_partner_lot, abc
+	domain	tcqst1	i.receive_qty, i.sum_rc_qty
+	domain	tccuni	i.uom
+	domain	tcinvt.date	i.inventory_date
+
+	o.message = ""
+ 	ret1 = 0
+
+ 	filename2 = "${BSE}/tmp_import/Upload_Receipt_Item.csv"
+
+	| Check user using WebUI or WebTop
+	if get.ui.mode() = 1 then
+		ret2 =  client2server("", filename2, false, false,true)
+	else
+		ret2 =  client.upload.file(filename2) 
+	endif
+
+	if ret2 <> 0 then	| Cancel Upload data
+		stop()
+	endif
+
+	temp.txt = trim$(get.local.filename())
+	str.no = len(temp.txt)
+
+	for i = 1 to str.no
+		instr = temp.txt(i;1)
+		
+		if instr = "\" then
+			pos.1 = i  
+		endif
+	endfor
+	
+ 	filename = temp.txt(pos.1+1)
+	
+ 	input.fp = seq.open(strip$(filename2),"rt")
+
+ 	if input.fp < 1 then
+ 		message("File Cannot be uploaded.")
+ 		return
+	else
+		seq.rewind(input.fp)
+		create.progress.indicator ("Receipt Line Uploading...", PROGRESS.BAR + PROGRESS.STOP)	
+
+        ret1 = seq.gets(curr.line, 2048, input.fp)  |0 = success
+		count=0
+
+		while ret1 = 0
+			i.sum_rc_qty =0
+
+			change.progress.indicator (count,"Receipt Line Uploading...%")
+			|***** Checking Excel Column *****| (PO,line,Qty,uom,business partner lot,Inventory Date dd/MM/yyyy)
+			check1 = string.scan(curr.line, "%s,%f,%f,%s,%s,%d/%d/%d",po.number,i.line,i.receive_qty,i.uom,i.business_partner_lot,dd,mm,yy)  
+			| message ("business_partner_lot : %s" , i.business_partner_lot)
+
+			| select tdpur401.qoor
+			| from tdpur401
+			| where tdpur401.orno = {:po.number} and tdpur401.pono = {:po.number}
+			| selectdo
+			| 	i.sum_rc_qty = i.sum_rc_qty + tdpur406.qidl
+			| selectempty
+			| endselect
+
+			| select tdpur406.qidl
+			| from tdpur406
+			| where tdpur406.orno = {:po.number}
+			| selectdo
+			| 	i.sum_rc_qty = i.sum_rc_qty + tdpur406.qidl
+			| selectempty
+			| endselect
+
+			pr.device = "Document"
+
+			stpapi.put.field("whinh3512m000", "whinh310.rcno", rcno)
+			ret = stpapi.find("whinh3512m000", o.message)
+			if ret <> 1 then
+				message ("Warehouse receipt not found : %s" , o.message)
+				stop()
+			else
+				ret = stpapi.mark("whinh3512m000", o.message) 
+				stpapi.put.field("whinh3512m000", "easy.number", str$(po.number))
+				stpapi.put.field("whinh3512m000", "easy.line", str$(i.line))
+				| stpapi.put.field("whinh3512m000", "whinh310.dino", i_packingslip)
+
+				ret = stpapi.update("whinh3512m000", true, o.message)
+				if not isspace(o.message) then
+					stpapi.end.session("whinh3512m000", o.message)
+					message ("easy.number  Error : %s" , o.message)
+					stop()
+
+				endif
+
+				if not ret then
+					ret = stpapi.recover("whinh3512m000", o.message)
+				endif
+			endif
+
+			stpapi.form.command("whinh3512m000", 5, "option.receive", o.message)
+
+			if not isspace(o.message) then
+				stpapi.end.session("whinh3512m000", o.message)
+				message ("option.receive Error : %s" , o.message)
+				stop()
+			endif
+
+			if not isspace(dd) then
+				i.inventory_date =date.to.utc( yy, mm, dd, 00, 00, 00 )
+			endif
+			| message("%s - %s - %s %s", dd,mm,yy,i.inventory_date)
+
+			edit.receipt.line(rcno,i.business_partner_lot,i.receive_qty,i.uom,i.inventory_date)
+			
+			ret1 = seq.gets(curr.line, 2048, input.fp)
+			if count < 99 then
+				count = count + 1
+			endif 	
+		endwhile
+		change.progress.indicator (100,"Upload Receipt Line completed")
+		ret2 = seq.close(input.fp)
+		destroy.progress.indicator()
+		stpapi.end.session("whinh3112s000", o.message)
+		stpapi.end.session("whinh3512m000", o.message)
+
+ 		| message("File uploaded. PO No. :"   & po.number)
+ 		return
+
+	endif
+
+
+ }
+	
+
+function extern edit.receipt.line(
+	domain  whinh.shpm rcno,
+	domain whltc.ltbp i.business_partner_lot,
+	domain tcqst1	i.receive_qty,
+	domain tccuni i.uom,
+	domain	tcinvt.date i.inventory_date
+	)
+{
+		string	rcln(10)
+		string o.message(500)
+		long ret
+		| stpapi.get.field("whinh3512m000","whinh312.rcln",rcln)|Get order line
+		select whinh312.rcln
+		from whinh312
+		where whinh312.rcno = {:rcno}
+		order by whinh312.rcln desc
+		as set with 1 rows
+		selectdo
+			rcln = str$(whinh312.rcln)
+		selectempty
+		endselect
+		
+		stpapi.put.field("whinh3112s000", "whinh312.rcno", rcno)
+		stpapi.put.field("whinh3112s000", "whinh312.rcln", str$(rcln))
+
+		ret = stpapi.find("whinh3112s000", o.message) 
+		ret = stpapi.mark("whinh3112s000", o.message) 
+
+		if ret then 
+			stpapi.put.field("whinh3112s000", "whinh312.ltbp", str$(i.business_partner_lot))|Business Partner Lot
+			stpapi.put.field("whinh3112s000", "whinh312.qrcr", str$(i.receive_qty))|Received Qty
+			stpapi.put.field("whinh3112s000", "whinh312.qrec", str$(i.receive_qty))|In Inventory Unit Qty
+			stpapi.put.field("whinh3112s000", "whinh312.rcun", str$(i.uom))|UOM
+			stpapi.put.field("whinh3112s000", "whinh312.idat", str$(i.inventory_date))|Inventory Date
+			ret = stpapi.update("whinh3112s000", true, o.message) 
+
+			if not isspace(o.message) then
+				| stpapi.form.command("whinh3112s000", 5, "option.unlink.receipt.ln", o.message)
+				| if not isspace(o.message) then
+				| 	message("2 %s", o.message)
+				| endif
+				| stpapi.recover("whinh2120m000",  o.message) no working
+				stpapi.end.session("whinh3112s000", o.message)
+				stpapi.end.session("whinh3512m000", o.message)
+				message("Upload quantity error on receipt line no. " & str$(rcln) & ". " & o.message )
+				stop()
+				| return
+			endif
+		endif 
+
+		|  return(rcln)
+}

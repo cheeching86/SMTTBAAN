@@ -1,0 +1,122 @@
+|******************************************************************************
+|* tdpur4100m9999  0  VRC B61C a  cus 
+|* Purchase Order API
+|* baan
+|* 01-08-24 [00:51]
+|******************************************************************************
+|* Script Type: 123
+|******************************************************************************
+  
+
+
+#include <bic_dal2>
+#include <bic_dam>
+
+#pragma used dll ottstpapihand
+#pragma used dll ottdllbw
+
+table	ttdpur400
+table	ttdpur401
+table	ttdpur419
+
+function extern string purchase_order_line_api(
+	string i_order(9),
+	string i_item(20),
+	long i_quantity,
+	string i_mpn(50),
+	string i_manufacturer(10),
+	string i_uom(3)
+	)
+{
+
+	string	pr.device(8),otbp(20)
+	domain tcmcs.str100 o.message,recover.msg
+	string o.error(500)
+	long	 ret, iCount
+	| domain tccuni s_uom
+
+	pr.device = "D"
+			if isspace(i_order) then
+ 				return("No PO Found")
+			else
+				select tdpur400.*
+				from tdpur400
+				where tdpur400.orno = :i_order
+				as set with 1 rows
+				selectdo
+
+					if str$(tdpur400.hdst) = str$("25") then
+						return ("Status Closed!")
+					endif
+
+					| Start Delete order line 
+					select tdpur401.*
+					from tdpur401
+					where tdpur401.orno = :i_order
+					selectdo
+						stpapi.put.field("tdpur4100m000", "tdpur400.orno", i_order)
+						ret = stpapi.find("tdpur4100m000", o.message)
+						if ret = 1 then 
+							ret = stpapi.synchronize.dialog("tdpur4100m000", "add",  o.error) 
+							if not isspace(o.error) then
+								stpapi.end.session("tdpur4100m000", o.message)
+								return (o.error & "=> " & o.message)
+							endif
+
+							if ret = 1 then 
+								ret = stpapi.delete("tdpur4101m000", true, o.error) 
+								if not ret then 
+									ret = stpapi.recover("tdpur4100m000", recover.msg) 
+									return ("1" &  o.error)
+								endif 
+							else
+								return ("2" & o.message)
+							endif 
+						else
+							return ("3" & o.message)
+						endif
+					selectempty
+					endselect
+					| End Delete order line 
+
+					stpapi.put.field("tdpur4100m000", "tdpur400.orno", i_order)
+					ret = stpapi.find("tdpur4100m000", o.message)
+					if ret = 1 then	
+						stpapi.get.field("tdpur4100m000","tdpur400.otbp",otbp)	
+						ret = stpapi.synchronize.dialog("tdpur4100m000","add", o.message) 
+						if not isspace(o.message) then
+							stpapi.end.session("tdpur4100m000", o.message)
+							return ("tdpur4100m000=> " & o.message)
+						endif
+
+						stpapi.put.field("tdpur4101m000", "tdpur401.item",str$(i_item))
+						stpapi.put.field("tdpur4101m000", "tdpur401.item.segment.1", "         ")
+						stpapi.put.field("tdpur4101m000", "tdpur401.item.segment.2",str$(i_item))
+						stpapi.put.field("tdpur4101m000", "tdpur401.qoor",str$(i_quantity))
+						stpapi.put.field("tdpur4101m000", "tdpur401.mpnr",str$(i_mpn))
+						stpapi.put.field("tdpur4101m000", "tdpur401.cmnf",str$(i_manufacturer))
+						stpapi.put.field("tdpur4101m000", "tdpur401.cuqp",i_uom)
+						| stpapi.put.field("tdpur4101m000", "tdpur419.curq",i_uom)
+						ret = stpapi.insert("tdpur4101m000", true, o.message) 
+
+						if not ret then 
+							ret = stpapi.recover("tdpur4101m000", o.error) 
+							stpapi.end.session("tdpur4101m000", o.message)
+							stpapi.end.session("tdpur4100m000", o.message)
+							return (o.message & "-" & o.error)
+						endif 
+						stpapi.end.session("tdpur4101m000") 
+						stpapi.end.session("tdpur4100m000") 
+
+						return ("Order line Added:" & i_order)
+					endif
+				selectempty
+					return ("Order not found")
+				endselect
+
+			endif
+			
+
+	return(o.message)
+
+}

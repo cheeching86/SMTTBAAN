@@ -1,0 +1,113 @@
+|******************************************************************************
+|* tdpur4100m9999  0  VRC B61C a  cus 
+|* Purchase Order API
+|* baan
+|* 01-08-24 [00:51]
+|******************************************************************************
+|* Script Type: 123
+|******************************************************************************
+  
+
+
+#include <bic_dal2>
+#include <bic_dam>
+
+#pragma used dll ottstpapihand
+#pragma used dll ottdllbw
+
+table	twhinh200
+table	twhinh220
+
+function extern string upload.trans.item(
+	string i_transaction_id(9),
+	string i_item(20),
+	long i_quantity
+	)
+{
+
+	string	pr.device(8),orno(20)
+	domain tcmcs.str100 o.message,recover.msg
+	string o.error(500)
+	long	 ret
+
+	pr.device = "D"
+	if isspace(i_transaction_id) then
+		return("No Item Found")
+	else
+		select whinh200.*
+		from whinh200
+		where whinh200.orno = :i_transaction_id
+		| as set with 1 rows
+		selectdo
+
+			| Start Delete order line 
+			select whinh220.*
+			from whinh220
+			where whinh220.orno = :i_transaction_id
+			selectdo
+				stpapi.put.field("whinh2100m000", "whinh200.orno", i_transaction_id)
+				ret = stpapi.find("whinh2100m000", o.message)
+				if ret = 1 then 
+					ret = stpapi.synchronize.dialog("whinh2100m000", "add",  o.error) 
+					if not isspace(o.error) then
+						stpapi.end.session("whinh2100m000", o.message)
+						return (o.error & "=> " & o.message)
+					endif
+
+					if ret = 1 then 
+						ret = stpapi.delete("whinh2120m000", true, o.error) 
+						if not ret then 
+							ret = stpapi.recover("whinh2100m000", recover.msg) 
+							return ("1" &  o.error)
+						endif 
+					else
+						return ("2" & o.message)
+					endif 
+				else
+					return ("3" & o.message)
+				endif
+			selectempty
+			endselect
+			| End Delete order line 
+
+			stpapi.put.field("whinh2100m000", "whinh200.orno", i_transaction_id)
+			ret = stpapi.find("whinh2100m000", o.message)
+			if ret = 1 then	
+				stpapi.get.field("whinh2100m000","whinh200.orno",orno)	
+				| return ("id-" & orno)
+
+				ret = stpapi.synchronize.dialog("whinh2100m000","add", o.message) 
+
+				if not isspace(o.message) then
+					stpapi.end.session("whinh2100m000", o.message)
+					return ("whinh2100m000=> " & o.message)
+				endif
+
+				stpapi.put.field("whinh2120m000", "whinh220.item",str$(i_item))
+				stpapi.put.field("whinh2120m000", "whinh220.item.segment.1", "         ")
+				stpapi.put.field("whinh2120m000", "whinh220.item.segment.2",str$(i_item))
+				stpapi.put.field("whinh2120m000", "whinh220.qoro",str$(i_quantity))
+
+				ret = stpapi.insert("whinh2120m000", true, o.message) 
+
+				if not ret then 
+					ret = stpapi.recover("whinh2120m000", o.error) 
+					stpapi.end.session("whinh2120m000", o.message)
+					stpapi.end.session("whinh2120m000", o.message)
+					return (o.message & "-" & o.error)
+				endif 
+				stpapi.end.session("whinh2120m000") 
+				stpapi.end.session("whinh2120m000") 
+
+				return ("Order line Added:" & i_transaction_id)
+			endif
+		selectempty
+			return ("Order not found")
+		endselect
+
+endif
+			
+
+	return(o.message)
+
+}
