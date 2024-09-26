@@ -36,7 +36,7 @@ Functions:
 
  function extern upload.trans.item()
  {		
- 	long	ret, ret1, ret2, input.fp,check1,str.no, i, pos.1,count,i.line
+ 	long	ret, ret1, ret2, input.fp,check1,str.no, i, pos.1,count,i.line,dd,mm,yy
  	string	filename2(200),curr.line(2048), temp.txt(250), instr(1),rcln(10)
 	domain	tcmcs.str100	filename
 	string	pr.device(8)
@@ -94,8 +94,8 @@ Functions:
 			i.sum_rc_qty =0
 
 			change.progress.indicator (count,"Receipt Line Uploading...%")
-			|***** Checking Excel Column *****| (PO,line,Qty,uom,business partner lot)
-			check1 = string.scan(curr.line, "%s,%f,%f,%s,%s",po.number,i.line,i.receive_qty,i.uom,i.business_partner_lot)  
+			|***** Checking Excel Column *****| (PO,line,Qty,uom,business partner lot,Inventory Date dd/MM/yyyy)
+			check1 = string.scan(curr.line, "%s,%f,%f,%s,%s,%d/%d/%d",po.number,i.line,i.receive_qty,i.uom,i.business_partner_lot,dd,mm,yy)  
 			| message ("business_partner_lot : %s" , i.business_partner_lot)
 
 			| select tdpur401.qoor
@@ -147,8 +147,13 @@ Functions:
 				message ("option.receive Error : %s" , o.message)
 				stop()
 			endif
-			
-			edit.receipt.line(rcno,i.business_partner_lot,i.receive_qty,i.uom,0)
+
+			if not isspace(dd) then
+				i.inventory_date =date.to.utc( yy, mm, dd, 00, 00, 00 )
+			endif
+			| message("%s - %s - %s %s", dd,mm,yy,i.inventory_date)
+
+			edit.receipt.line(rcno,i.business_partner_lot,i.receive_qty,i.uom,i.inventory_date)
 			
 			ret1 = seq.gets(curr.line, 2048, input.fp)
 			if count < 99 then
@@ -203,7 +208,7 @@ function extern edit.receipt.line(
 			stpapi.put.field("whinh3112s000", "whinh312.qrcr", str$(i.receive_qty))|Received Qty
 			stpapi.put.field("whinh3112s000", "whinh312.qrec", str$(i.receive_qty))|In Inventory Unit Qty
 			stpapi.put.field("whinh3112s000", "whinh312.rcun", str$(i.uom))|UOM
-			| stpapi.put.field("whinh3112s000", "whinh312.idat", str$("1731152756"))|Inventory Date
+			stpapi.put.field("whinh3112s000", "whinh312.idat", str$(i.inventory_date))|Inventory Date
 			ret = stpapi.update("whinh3112s000", true, o.message) 
 
 			if not isspace(o.message) then

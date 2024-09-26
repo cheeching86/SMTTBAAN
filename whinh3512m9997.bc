@@ -48,6 +48,7 @@ Functions:
 	domain	tcqst1	i.receive_qty, i.sum_rc_qty
 	domain	tccuni	i.uom
 	domain	tcinvt.date	i.inventory_date
+	domain	tcrefa i.refe
 
 	o.message = ""
  	ret1 = 0
@@ -95,7 +96,7 @@ Functions:
 
 			change.progress.indicator (count,"Receipt Line Uploading...%")
 			|***** Checking Excel Column *****| (PO,line,Qty,uom,business partner lot,Inventory Date dd/MM/yyyy)
-			check1 = string.scan(curr.line, "%s,%f,%f,%s,%s,%d/%d/%d",po.number,i.line,i.receive_qty,i.uom,i.business_partner_lot,dd,mm,yy)  
+			check1 = string.scan(curr.line, "%s,%f,%f,%s,%s,%d/%d/%d,%s",po.number,i.line,i.receive_qty,i.uom,i.business_partner_lot,dd,mm,yy,i.refe)  
 			| message ("business_partner_lot : %s" , i.business_partner_lot)
 
 			| select tdpur401.qoor
@@ -153,7 +154,7 @@ Functions:
 			endif
 			| message("%s - %s - %s %s", dd,mm,yy,i.inventory_date)
 
-			edit.receipt.line(rcno,i.business_partner_lot,i.receive_qty,i.uom,i.inventory_date)
+			edit.receipt.line(rcno,i.business_partner_lot,i.receive_qty,i.uom,i.inventory_date,i.refe)
 			
 			ret1 = seq.gets(curr.line, 2048, input.fp)
 			if count < 99 then
@@ -180,7 +181,8 @@ function extern edit.receipt.line(
 	domain whltc.ltbp i.business_partner_lot,
 	domain tcqst1	i.receive_qty,
 	domain tccuni i.uom,
-	domain	tcinvt.date i.inventory_date
+	domain	tcinvt.date i.inventory_date,
+	domain	tcrefa i.refe
 	)
 {
 		string	rcln(10)
@@ -209,6 +211,7 @@ function extern edit.receipt.line(
 			stpapi.put.field("whinh3112s000", "whinh312.qrec", str$(i.receive_qty))|In Inventory Unit Qty
 			stpapi.put.field("whinh3112s000", "whinh312.rcun", str$(i.uom))|UOM
 			stpapi.put.field("whinh3112s000", "whinh312.idat", str$(i.inventory_date))|Inventory Date
+			stpapi.put.field("whinh3112s000", "whinh312.refe", str$(i.refe))|Inventory Date
 			ret = stpapi.update("whinh3112s000", true, o.message) 
 
 			if not isspace(o.message) then
