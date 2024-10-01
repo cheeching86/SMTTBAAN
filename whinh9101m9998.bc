@@ -24,7 +24,6 @@ function extern string warehouse_order(
 	domain tccshp i_shipfrom.code, 
 	domain tcseri i_series,
 	domain tccshp i_shipto.code,
-	long i_date,
 	string rfid(20)
 	)
 {
@@ -43,7 +42,7 @@ function extern string warehouse_order(
                
                 string	pr.device(8),orno(10) 
 				domain tcmcs.str100 o.error
-				domain tcdate pddt
+				domain tcdate pddt,prdt
 
                 o.error = ""
     			pr.device = "DOCUMENT"
@@ -58,14 +57,17 @@ function extern string warehouse_order(
 						return("InforLN: No Kitlist Found")
 					else
 
-						select whinh200.orno
+						select whinh200.orno,whinh200.pddt,whinh200.prdt
 						from whinh200
 						where whinh200.refe = :i_kitlist
 						selectdo
 							orno = trim$(whinh200.orno)
-							
+							pddt = whinh200.pddt
+							prdt = whinh200.prdt
 						selectempty
 							orno = ""
+							pddt = 0
+							prdt = 0
 						endselect
 
 
@@ -95,59 +97,77 @@ function extern string warehouse_order(
 										stpapi.put.field("whinh2202m000", "shipto.code", str$(i_shipto.code))
 										stpapi.put.field("whinh2202m000", "shipto.loca", "")
 										stpapi.put.field("whinh2202m000", "series", str$(i_series))	
-										if i_date > 0 then 		
-										stpapi.put.field("whinh2202m000", "delivery.date", str$(i_date))
-										stpapi.put.field("whinh2202m000", "receipt.date", str$(i_date))
-										endif
+											if pddt > 0 then 		
+											stpapi.put.field("whinh2202m000", "delivery.date", str$(pddt))
+											stpapi.put.field("whinh2202m000", "receipt.date", str$(prdt))
+											endif
 										stpapi.put.field("whinh2202m000", "order.type", str$("W01"))
 										stpapi.put.field("whinh2202m000", "order.ref", i_kitlist)
 										stpapi.put.field("whinh2202m000", "ord.line.ref", rfid)
-										
+										stpapi.put.field("whinh2202m000", "activate.order", str$(tcyesno.yes))
+										| stpapi.put.field("whinh2202m000", "direct.update", str$(tcyesno.yes))
 										stpapi.set.report("whinh2202m000", "rwhinh220211000", pr.device, o.error)
 										if not isspace(o.error) then
 											return(o.error)
 										else
 											stpapi.form.command("whinh2202m000", 5, "exec.cont.process", o.error)
+											
 											if not isspace(o.error) then
 											return(o.error)
 											else
-												stpapi.end.session("whinh2202m000",o.error)
-												stpapi.end.session("whinh2100m000",o.error)
-												if not isspace(o.error) then
-												return(o.error)
-												else
-													select whinh200.orno
-													from whinh200
-													where whinh200.refe = :i_kitlist
-													group by whinh200.orno
-													selectdo
-														o.error = whinh200.orno
-													selectempty
-														o.error = "No return! Please call InforLN Supportor"
-													endselect
-
-													return(o.error)
-
-												endif
+												stpapi.get.field("whinh2202m000","order.number",o.error)
+												| o.error = o.error & WH_Process(o.error,1)
 											endif
 										endif
-
-					
-
-									endif
-						
-
-							
+								endif
 						endselect
-
-
-						
-							endif	
+					endif	
 				endif
+
+	stpapi.end.session("whinh2202m000",o.error)
+	stpapi.end.session("whinh2100m000",o.error)
 	return(o.error)
 }
 
+function extern string WH_Process(
+	domain tcorno i_order,
+	long s_oset
+	)
+{
+		domain tcmcs.str100 o.error
+		long ret
+		string o.message
 
+| BOH checking*******
+			
+		stpapi.put.field("whinh2100m100", "whinh200.oorg", "72")
+		stpapi.put.field("whinh2100m100", "whinh200.orno", str$(i_order))
+		stpapi.put.field("whinh2100m100", "whinh200.oset", str$(s_oset))
+		ret = stpapi.find("whinh2100m100", o.message)
+		if ret <> 1 then
+				return(o.message)
+		else
+			ret = stpapi.mark("whinh2100m100", o.message) 
+			if ret then
+				| stpapi.get.field("whinh2100m100","whinh200.orno",o.error)
+				stpapi.form.command("whinh2100m100", 5, "automatic.process", o.error)
+
+				if not isspace(o.error) then
+					stpapi.end.session("whinh2100m000",o.error)
+					return(o.error) 
+				else
+					stpapi.end.session("whinh2100m000",o.error)
+					return("1")
+				endif
+			else 
+				stpapi.end.session("whinh2100m000",o.error)
+				return("2")
+			endif
+
+		endif
+		stpapi.end.session("whinh2100m000",o.error)
+		return("end")
+}
 
 function extern string RemoveRTS(
 	string rfid(20),
@@ -216,8 +236,10 @@ function extern string RemoveRTS(
 		endif
 	endif
 	
-
+	stpapi.end.session("whinh2100m100",o.message)
+	stpapi.end.session("whinh2120m000",o.message)
 	
 	return(o.message)
 
 }
+
