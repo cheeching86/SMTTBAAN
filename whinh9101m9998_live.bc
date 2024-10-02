@@ -13,7 +13,6 @@
 
 table	twhinh200 
 table	twhinh220 
-table	twhwmd215
 
 #pragma used dll ottstpapihand
 #pragma used dll ottdllbw
@@ -77,27 +76,9 @@ function extern string warehouse_order(
 						where whinh220.refe = :rfid and whinh220.orno = :orno  
 						selectdo
 							return("InforLN: This Rfid already scanned")
-							| stop()					
+							stop()
+							
 						selectempty
-							i_item = "         " & trim$(i_item)
-
-							select whwmd215.qhnd
-							from whwmd215
-							where whwmd215.item = :i_item and whwmd215.cwar = :i_shipfrom.code
-							selectdo
-								if i_qty > whwmd215.qhnd then
-									o.message = "Insufficient Inventory! Warehouse: " & trim$(i_shipfrom.code) & ".On-Hand Quantity: " & str$(whwmd215.qhnd) & " vs Order Quantity: " & str$(i_qty)
-									stpapi.end.session("whinh2100m100",o.message)
-									stpapi.end.session("whinh2120m000",o.message)
-									return(o.message)
-								endif
-							selectempty
-									o.message = "Warehouse: " & trim$(i_shipfrom.code) & " and Item :" & trim$(i_item) & " not exist in Infor ln."
-									stpapi.end.session("whinh2100m100",o.message)
-									stpapi.end.session("whinh2120m000",o.message)
-									return(o.message)
-							endselect
-
 							stpapi.form.command("whinh2100m000", 5, "start.easy.order.entry", o.message)
 													
 								if not isspace(o.message) then
@@ -135,7 +116,7 @@ function extern string warehouse_order(
 											return(o.message)
 											else
 												stpapi.get.field("whinh2202m000","order.number",o.message)
-												o.message = WH_Process(rfid,o.message)
+
 											endif
 										endif
 								endif
@@ -148,86 +129,7 @@ function extern string warehouse_order(
 	return(o.message)
 }
 
-function extern string WH_Process(
-	string rfid(20),
-	domain tcorno i_order
-	)
-{
 
-	domain tcmcs.str100 o.message
-	long ret
-	long s_pono,s_seqn,s_oset
-
-	if isspace(rfid) then	
-		return("No rfid Found") 
-	else
-		if isspace(i_order) then	
-			return("No order number Found") 
-		
-		else
-			select whinh220.pono, whinh220.seqn,whinh220.oset,whinh220.item,whinh220.cwar,whinh220.qoro
-			from whinh220
-			where whinh220.refe = :rfid and whinh220.orno = :i_order 
-			|as set with 1 rows
-			selectdo
-				s_pono = whinh220.pono
-				s_seqn = whinh220.seqn
-				s_oset = whinh220.oset
-
-				select whwmd215.qhnd
-				from whwmd215
-				where whwmd215.item = :whinh220.item and whwmd215.cwar = :whinh220.cwar 
-				selectdo
-					if whinh220.qoro > whwmd215.qhnd then
-						o.message = "Insufficient Inventory! Warehouse: " & trim$(whinh220.cwar) & ".On-Hand Qty: " & str$(whwmd215.qhnd)
-						stpapi.end.session("whinh2100m100",o.message)
-						stpapi.end.session("whinh2120m000",o.message)
-						return(o.message)
-					endif
-				selectempty
-				endselect
-
-				stpapi.put.field("whinh2100m100", "whinh200.oorg", "72")
-				stpapi.put.field("whinh2100m100", "whinh200.orno", str$(i_order))
-				stpapi.put.field("whinh2100m100", "whinh200.oset", str$(s_oset))
-				ret = stpapi.find("whinh2100m100", o.message)
-				if ret <> 1 then
-						o.message = i_order & str$(s_oset)
-				else
-					ret = stpapi.mark("whinh2100m100", o.message) 
-					if ret then
-
-						stpapi.put.field("whinh2120m000", "whinh220.pono", str$(s_pono))
-						stpapi.put.field("whinh2120m000", "whinh220.seqn", str$(s_seqn))
-						ret = stpapi.find("whinh2120m000", o.message)
-
-						
-						if ret <> 1 then
-							o.message = "Line Order not found"
-						else
-
-							stpapi.form.command("whinh2120m000", 5, "automatic.process", o.message)
-							if ret then 
-								o.message = i_order & "|" & str$(s_pono) & "|" & str$(s_oset) & " has been processed."
-							endif
-						endif
-					endif
-
-				endif
-			
-			selectempty
-				return("InforLN: This rfid not found in InforLN")
-			endselect
-		endif
-	endif
-	
-	stpapi.end.session("whinh2100m100",o.message)
-	stpapi.end.session("whinh2120m000",o.message)
-	
-	return(o.message)
-	
-
-}
 
 function extern string RemoveRTS(
 	string rfid(20),

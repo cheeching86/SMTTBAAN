@@ -37,7 +37,7 @@ Functions:
 
  function extern upload.trans.item()
  {		
- 	long	ret, ret1, ret2, input.fp,check1,str.no, i, pos.1,count
+ 	long	ret1, ret2, input.fp,check1,str.no, i, pos.1,count
  	string	filename2(200),curr.line(2048), temp.txt(250), instr(1)
 	string	pr.device(8)
  	domain  tcmcs.str100	o.message, o.error
@@ -238,4 +238,23 @@ Functions:
 
 
  }
+
+
+
+function extern fetchapi()
+{
+	long ret
+	| string client.filename(200)
+	| client.filename =""
+
+	| if server2client( bse.tmp.dir$() & "/test1.txt", "C:\\text.txt", false, false ) = 0 then 
+	| 	client.filename = get.local.filename()
+	| 	start.application.local(client.filename & " " & 
+	| 		quoted.string(aClientFile), aWaitFlag, someExitCode)
+	| endif
+
+	start.application.local("C:\test.bat",false,ret) 
+
+}
+
 	
